@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
-import { IconMeal, IconProgress, IconToday, IconTrain, IconUser } from './Icons'
+import { IconMeal, IconProgress, IconSettings, IconToday, IconTrain } from './Icons'
 import { Toaster } from './ui'
 import { SyncBadge } from './SyncBadge'
 import { startSyncLoop } from '@/lib/sync'
@@ -55,8 +55,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <span className="spacer" />
         <SyncBadge />
-        <Link href="/datos/" className="iconbtn" aria-label="Mis datos" aria-current={path.startsWith('/datos') ? 'page' : undefined}>
-          <IconUser />
+        <Link href="/datos/" className="iconbtn" aria-label="Ajustes" aria-current={path.startsWith('/datos') ? 'page' : undefined}>
+          <IconSettings />
         </Link>
       </header>
       <main className="main">

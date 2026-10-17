@@ -132,7 +132,7 @@ export function Ring({ value, max, children, size = 96, light = false }: { value
   return (
     <div className="ring" style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" aria-hidden>
-        <circle cx="50" cy="50" r={r} fill="none" stroke={light ? 'rgba(254,248,239,.25)' : 'var(--offwhite)'} strokeWidth="8" />
+        <circle cx="50" cy="50" r={r} fill="none" stroke={light ? 'color-mix(in srgb, var(--cream) 25%, transparent)' : 'var(--offwhite)'} strokeWidth="8" />
         <circle cx="50" cy="50" r={r} fill="none" stroke={light ? 'var(--cream)' : 'var(--lab)'} strokeWidth="8" strokeLinecap="round"
           strokeDasharray={`${c * pct} ${c}`} />
       </svg>

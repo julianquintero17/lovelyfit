@@ -47,7 +47,7 @@ export function AppLock() {
           </>
         ) : (
           <div className="card stack" style={{ textAlign: 'left' }}>
-            <p className="small muted" style={{ margin: 0 }}>Al entrar con tu contraseña se desactiva el bloqueo; podés volver a activarlo en Mis datos.</p>
+            <p className="small muted" style={{ margin: 0 }}>Al entrar con tu contraseña se desactiva el bloqueo; podés volver a activarlo en Ajustes.</p>
             <Login onDone={() => { disableLock(); setLocked(false) }} />
           </div>
         )}

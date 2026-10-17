@@ -72,7 +72,7 @@ export default function TeamPage() {
   const me = s.email?.toLowerCase()
   return (
     <div className="stack-lg">
-      <Link href="/datos/" className="row small" style={{ textDecoration: 'none', gap: 4 }}><IconBack width={16} /> Mis datos</Link>
+      <Link href="/datos/" className="row small" style={{ textDecoration: 'none', gap: 4 }}><IconBack width={16} /> Ajustes</Link>
       <h1>Equipo y accesos</h1>
       <p className="small muted" style={{ margin: 0 }}>
         Acceso por invitación. Ves quién puede entrar, pero no los datos de nadie: cada cuenta solo ve lo suyo.

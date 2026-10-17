@@ -51,7 +51,7 @@ export default function TrainPage() {
       </div>
 
       {current ? (
-        <Link href={`/entrenar/sesion/?id=${current.id}`} className="card brand" style={{ textDecoration: 'none' }}>
+        <Link href={`/entrenar/sesion/?id=${current.id}`} className="card brand stack" style={{ textDecoration: 'none', display: 'flex', gap: 4 }}>
           <p className="kicker">Sesión en curso</p>
           <h2>{current.name} · continuar →</h2>
         </Link>

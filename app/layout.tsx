@@ -7,6 +7,7 @@ import '@fontsource/pt-sans-narrow/700.css'
 import '@fontsource/eb-garamond/400-italic.css'
 import './globals.css'
 import { AppShell } from '@/components/AppShell'
+import { THEME_SCRIPT } from '@/lib/theme'
 
 export const metadata: Metadata = {
   title: 'Lovely Fit',
@@ -21,7 +22,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#FEF8EF',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FEF8EF' },
+    { media: '(prefers-color-scheme: dark)', color: '#1E2617' },
+  ],
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
@@ -29,7 +33,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es-AR">
+    <html lang="es-AR" data-theme="claro" suppressHydrationWarning>
+      <head>
+        {/* Tema guardado aplicado antes del primer pintado (sin destello). Ver lib/theme.ts */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
         <AppShell>{children}</AppShell>
       </body>

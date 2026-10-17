@@ -192,7 +192,7 @@ export default function TodayPage() {
 
       <p className="tiny muted" style={{ textAlign: 'center' }}>
         {sync.state === 'local-only' || sync.state === 'signed-out'
-          ? 'Datos guardados solo en este teléfono. Hacé un respaldo seguido desde Mis datos.'
+          ? 'Datos guardados solo en este teléfono. Hacé un respaldo seguido desde Ajustes.'
           : sync.state === 'error' || sync.state === 'no-access'
             ? sync.error
             : sync.pending > 0

@@ -31,6 +31,25 @@
   color-scheme: light;
 }
 
+/* Modo Verde: interfaz invertida. Mismos nombres de token, otros valores.
+   --cream = fondo de página / texto sobre superficies fuertes; --lab = acento principal. Contrastes ≥ 6:1. */
+:root[data-theme='verde'] {
+  --cream: #1e2617;
+  --offwhite: #303b25;
+  --surface: #28311f;
+  --ink: #f5f2ea;
+  --ink-2: #c9c7bd;
+  --lab: #dde5c4;
+  --deep: #dde5c4;
+  --olive: #9aa585;
+  --stone: #4b5640;
+  --clay: #c98f77;
+  --clay-ink: #e3ae97;
+  --danger: #f29585;
+  color-scheme: dark;
+}
+
+
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -288,3 +307,6 @@ a.badge { min-height: 44px; }
 
 .iconbtn:disabled { opacity: .35; cursor: default; }
 .extile .tiny { font-size: 13px; }
+
+/* Formularios en grilla: los campos se alinean por la base aunque una etiqueta tenga aclaración */
+.grid2 > label.field, .grid3 > label.field { justify-content: flex-end; }

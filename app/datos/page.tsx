@@ -11,6 +11,7 @@ import { changePassword, countPending, requestSync, signOut } from '@/lib/sync'
 import { disableLock, enableLock, getLock, lockSupported } from '@/lib/applock'
 import { dayKey } from '@/lib/dates'
 import Link from 'next/link'
+import { applyTheme, getTheme, type Theme } from '@/lib/theme'
 import type { Profile, Reminder } from '@/lib/types'
 import { Login } from '@/components/Login'
 import { HealthConnect } from '@/components/HealthConnect'
@@ -21,7 +22,13 @@ export default function MyDataPage() {
   if (profile === undefined) return <p className="empty">Cargando…</p>
   return (
     <div className="stack-lg">
-      <h1>Mis datos</h1>
+      <h1>Ajustes</h1>
+      <nav className="chips scroll-x" aria-label="Secciones">
+        {[['apariencia', 'Apariencia'], ['perfil', 'Perfil'], ['cuenta', 'Cuenta'], ['seguridad', 'Face ID'], ['integraciones', 'Reloj y Salud'], ['recordatorios', 'Recordatorios'], ['respaldo', 'Respaldo']].map(([id, label]) => (
+          <a key={id} href={`#${id}`} className="chip" style={{ textDecoration: 'none', color: 'inherit' }}>{label}</a>
+        ))}
+      </nav>
+      <AppearanceCard />
       {profile && <ProfileCard profile={profile} />}
       <AccountCard />
       <SecurityCard />
@@ -35,6 +42,26 @@ export default function MyDataPage() {
       </div>
       <DangerCard />
     </div>
+  )
+}
+
+function AppearanceCard() {
+  const [theme, setTheme] = useState<Theme>('claro')
+  useEffect(() => setTheme(getTheme()), [])
+  const choose = (t: Theme) => {
+    applyTheme(t)
+    setTheme(t)
+  }
+  return (
+    <section className="card stack" id="apariencia">
+      <h2>Apariencia</h2>
+      <div className="seg" role="group" aria-label="Tema">
+        <button aria-pressed={theme === 'claro'} onClick={() => choose('claro')} data-testid="theme-claro">Claro</button>
+        <button aria-pressed={theme === 'verde'} onClick={() => choose('verde')} data-testid="theme-verde">Verde</button>
+        <button aria-pressed={theme === 'auto'} onClick={() => choose('auto')}>Automático</button>
+      </div>
+      <p className="tiny muted" style={{ margin: 0 }}>Verde es el modo oscuro de Lovely Fit. Automático sigue la configuración del iPhone. Se guarda en este dispositivo.</p>
+    </section>
   )
 }
 

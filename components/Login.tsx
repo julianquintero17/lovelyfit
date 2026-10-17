@@ -82,7 +82,7 @@ export function Login({ onDone }: { onDone?: () => void }) {
             })}>{busy ? 'Enviando…' : 'Enviarme un código'}</button>
           ) : (
             <>
-              <p className="small muted" style={{ margin: 0 }}>Te mandamos un código a {email}. Puede tardar un minuto; revisá spam. Después podés crear una contraseña nueva en Mis datos.</p>
+              <p className="small muted" style={{ margin: 0 }}>Te mandamos un código a {email}. Puede tardar un minuto; revisá spam. Después podés crear una contraseña nueva en Ajustes.</p>
               <label className="field">
                 Código
                 <input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={10} value={code} onChange={(e) => setCode(e.target.value)} />
