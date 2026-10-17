@@ -7,4 +7,5 @@ psql -q -c "drop database if exists lovely_fit_test" -c "create database lovely_
 psql -q -d lovely_fit_test -f supabase/tests/mock_supabase.sql
 psql -q -d lovely_fit_test -v ON_ERROR_STOP=1 -f supabase/migrations/0001_lovely_fit.sql
 psql -q -d lovely_fit_test -v ON_ERROR_STOP=1 -f supabase/migrations/0002_access.sql
+psql -q -d lovely_fit_test -v ON_ERROR_STOP=1 -f supabase/migrations/0003_catalog_key.sql
 psql -q -d lovely_fit_test -At -v ON_ERROR_STOP=1 -f supabase/tests/rls_lww.sql

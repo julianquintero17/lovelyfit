@@ -40,6 +40,10 @@ function SessionView() {
   const [finishing, setFinishing] = useState(false)
   const saveState = useSaveState()
 
+  useEffect(() => {
+    if (session && session.status !== 'discarded' && ses && ses.length === 0) setPicker({ mode: 'add' })
+  }, [session?.status, ses?.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (session === undefined || ses === undefined || sets === undefined) return <p className="empty">Cargando…</p>
   if (!session || session.deletedAt) {
     return (
@@ -123,6 +127,7 @@ function SessionView() {
           last={i === ses.length - 1}
           neighbors={[ses[i - 1], ses[i + 1]]}
           onRest={(sec) => setRest(sec)}
+          live={live}
           onSwap={() => setPicker({ mode: 'swap', se })}
         />
       ))}
@@ -204,6 +209,7 @@ function ExerciseCard(props: {
   last: boolean
   neighbors: [SessionExercise | undefined, SessionExercise | undefined]
   onRest: (sec: number) => void
+  live: boolean
   onSwap: () => void
 }) {
   const { se, ex, sets, sessionId } = props
@@ -217,6 +223,9 @@ function ExerciseCard(props: {
   }, [se.exerciseId, sessionId])
 
   const prev = perfs?.[0]
+  const workSets = sets.filter((x) => x.kind === 'work')
+  const activeSet = sets.find((x) => !x.done)
+  const doneBefore = (x: WorkSet) => [...sets].filter((y) => y.done && y.order < x.order && y.kind === x.kind).at(-1)
   const hint = perfs && ex ? progressionHint(perfs, se.repMax, ex.incrementKg) : null
   const skipped = se.status === 'skipped'
   const isCardio = se.minutes != null
@@ -235,12 +244,16 @@ function ExerciseCard(props: {
     const done = !s.done
     const patch: Partial<WorkSet> = { done, doneAt: done ? nowISO() : null }
     // Completar con un toque: si no escribiste repes, se toma lo sugerido
-    if (done && s.reps == null && placeholderReps != null) patch.reps = placeholderReps
+    if (done) {
+      const ref = doneBefore(s) ?? (s.kind === 'work' ? prev?.sets[workSets.indexOf(s)] : undefined)
+      if (s.reps == null) patch.reps = ref?.reps ?? placeholderReps
+      if (s.weightKg == null && ref?.weightKg != null) patch.weightKg = ref.weightKg
+    }
     const r = await persist(() => update<WorkSet>('sets', s.id, patch))
     if (r.ok && !done && se.status === 'done') await persist(() => update<SessionExercise>('sessionExercises', se.id, { status: 'pending' }))
     if (r.ok && done) {
       unlockAudio()
-      props.onRest(se.restSec || 90)
+      if (props.live && s.kind === 'work') props.onRest(se.restSec || 90)
       const allDone = sets.every((x) => (x.id === s.id ? true : x.done))
       if (allDone && se.status !== 'done') await persist(() => update<SessionExercise>('sessionExercises', se.id, { status: 'done' }))
     }
@@ -277,10 +290,24 @@ function ExerciseCard(props: {
       {!skipped && !isCardio && (
         <div>
           <div className="sethead"><span>#</span><span>kg</span><span>repes</span><span>✓</span></div>
-          {sets.map((s) => (
-            <SetRow key={s.id} s={s} prevSet={prev?.sets[s.order]} repHint={prev?.sets[s.order]?.reps ?? se.repMin} onToggle={toggleSet} />
-          ))}
-          <div className="row" style={{ marginTop: 6 }}>
+          {sets.map((s) => {
+            const wi = workSets.indexOf(s)
+            const prevSet = wi >= 0 ? prev?.sets[wi] : undefined
+            return (
+              <SetRow key={s.id} s={s} label={s.kind === 'warmup' ? 'A' : String(wi + 1)} prevSet={prevSet}
+                repHint={s.kind === 'warmup' ? null : prevSet?.reps ?? se.repMin} onToggle={toggleSet} active={s.id === activeSet?.id} />
+            )
+          })}
+          {activeSet && (
+            <SetStepper
+              set={activeSet}
+              increment={ex?.incrementKg || 2.5}
+              before={doneBefore(activeSet)}
+              fallback={workSets.indexOf(activeSet) >= 0 ? prev?.sets[workSets.indexOf(activeSet)] : undefined}
+              repHint={se.repMin}
+            />
+          )}
+          <div className="row wrap" style={{ marginTop: 6 }}>
             <button className="linkbtn small" onClick={() => {
               const lastSet = sets.at(-1)
               persist(() => insert<WorkSet>('sets', {
@@ -288,6 +315,14 @@ function ExerciseCard(props: {
                 weightKg: lastSet?.weightKg ?? null, reps: null, rir: null, done: false, doneAt: null,
               }))
             }}>+ serie</button>
+            <button className="linkbtn small" onClick={() => {
+              const first = sets[0]
+              const w = workSets[0]?.weightKg ?? prev?.sets[0]?.weightKg ?? null
+              persist(() => insert<WorkSet>('sets', {
+                sessionId, sessionExerciseId: se.id, exerciseId: se.exerciseId, order: (first?.order ?? 0) - 1, kind: 'warmup',
+                weightKg: w != null ? Math.round(w * 0.5 / 2.5) * 2.5 : null, reps: null, rir: null, done: false, doneAt: null,
+              }))
+            }}>+ aproximación</button>
             {sets.length > 0 && !sets.at(-1)!.done && (
               <button className="linkbtn small" style={{ color: 'var(--ink-2)' }} onClick={() => persist(() => softDelete('sets', sets.at(-1)!.id))}>− quitar última</button>
             )}
@@ -335,7 +370,7 @@ function ExerciseCard(props: {
   )
 }
 
-function SetRow({ s, prevSet, repHint, onToggle }: { s: WorkSet; prevSet?: WorkSet; repHint: number | null; onToggle: (s: WorkSet, reps: number | null) => void }) {
+function SetRow({ s, label, prevSet, repHint, onToggle, active }: { s: WorkSet; label: string; prevSet?: WorkSet; repHint: number | null; onToggle: (s: WorkSet, reps: number | null) => void; active: boolean }) {
   const [kg, setKg] = useState(s.weightKg == null ? '' : fmtKg(s.weightKg))
   const [reps, setReps] = useState(s.reps == null ? '' : String(s.reps))
   // Si el valor cambia desde afuera (sync, sustitución), reflejarlo
@@ -356,17 +391,56 @@ function SetRow({ s, prevSet, repHint, onToggle }: { s: WorkSet; prevSet?: WorkS
   }
 
   return (
-    <div className={`setrow${s.done ? ' done' : ''}`} data-testid="set-row">
-      <span className="idx">{s.order + 1}</span>
-      <input className="input" inputMode="decimal" aria-label={`Kilos serie ${s.order + 1}`} value={kg}
+    <div className={`setrow${s.done ? ' done' : ''}${active ? ' active' : ''}${s.kind === 'warmup' ? ' warmup' : ''}`} data-testid="set-row">
+      <span className="idx" title={s.kind === 'warmup' ? 'Aproximación' : undefined}>{label}</span>
+      <input className="input" inputMode="decimal" aria-label={`Kilos serie ${label}`} value={kg}
         placeholder={prevSet?.weightKg != null ? fmtKg(prevSet.weightKg) : 'kg'}
         onChange={(e) => { setKg(e.target.value); commit('weightKg', e.target.value) }} />
-      <input className="input" inputMode="numeric" aria-label={`Repeticiones serie ${s.order + 1}`} value={reps}
+      <input className="input" inputMode="numeric" aria-label={`Repeticiones serie ${label}`} value={reps}
         placeholder={repHint != null ? String(repHint) : 'reps'}
         onChange={(e) => { setReps(e.target.value); commit('reps', e.target.value) }} />
-      <button className="check" aria-pressed={s.done} aria-label={s.done ? `Desmarcar serie ${s.order + 1}` : `Completar serie ${s.order + 1}`} onClick={() => onToggle(s, repHint)} data-testid="set-check">
+      <button className="check" aria-pressed={s.done} aria-label={s.done ? `Desmarcar serie ${label}` : `Completar serie ${label}`} onClick={() => onToggle(s, repHint)} data-testid="set-check">
         <IconCheck />
       </button>
+    </div>
+  )
+}
+
+/** Panel rápido para la serie activa: sin teclado para lo común. */
+function SetStepper({ set, increment, before, fallback, repHint }: { set: WorkSet; increment: number; before?: WorkSet; fallback?: WorkSet; repHint: number }) {
+  const save = (patch: Partial<WorkSet>) => persist(() => update<WorkSet>('sets', set.id, patch))
+  const kg = set.weightKg ?? before?.weightKg ?? fallback?.weightKg ?? 0
+  const reps = set.reps ?? before?.reps ?? fallback?.reps ?? repHint
+  const src = before ?? fallback
+  const step = (v: number, d: number, min = 0) => Math.max(min, Math.round((v + d) * 100) / 100)
+  return (
+    <div className="stepper" data-testid="set-stepper">
+      <div className="stepper-row">
+        <span className="tiny muted">kg</span>
+        <button className="stepbtn" aria-label={`Restar ${fmtKg(increment)} kg`} onClick={() => save({ weightKg: step(kg, -increment) })}>−{fmtKg(increment)}</button>
+        <span className="num stepval">{fmtKg(set.weightKg ?? kg)}</span>
+        <button className="stepbtn" aria-label={`Sumar ${fmtKg(increment)} kg`} onClick={() => save({ weightKg: step(kg, increment) })}>+{fmtKg(increment)}</button>
+      </div>
+      <div className="stepper-row">
+        <span className="tiny muted">repes</span>
+        <button className="stepbtn" aria-label="Restar una repetición" onClick={() => save({ reps: step(reps, -1, 1) })}>−1</button>
+        <span className="num stepval">{set.reps ?? reps}</span>
+        <button className="stepbtn" aria-label="Sumar una repetición" onClick={() => save({ reps: step(reps, 1) })}>+1</button>
+      </div>
+      <div className="row wrap" style={{ gap: 6, justifyContent: 'space-between' }}>
+        {src && (
+          <button className="chip" onClick={() => save({ weightKg: src.weightKg, reps: src.reps })} data-testid="repeat-set">
+            Igual que {before ? 'la anterior' : 'la vez pasada'} ({fmtKg(src.weightKg)}×{src.reps ?? '—'})
+          </button>
+        )}
+        <div className="row" style={{ gap: 4 }} role="group" aria-label="Repeticiones en reserva">
+          <span className="tiny muted">RIR</span>
+          {[0, 1, 2, 3].map((n) => (
+            <button key={n} className="chip" style={{ minWidth: 40, justifyContent: 'center', padding: 0 }} aria-pressed={set.rir === n}
+              onClick={() => save({ rir: set.rir === n ? null : n })}>{n === 3 ? '3+' : n}</button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

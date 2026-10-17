@@ -47,6 +47,8 @@ export interface Exercise extends Base {
   /** Foto propia del usuario (id en tabla photos). Sin imágenes de terceros sin licencia. */
   photoId: string | null
   isCustom: boolean
+  /** Clave del catálogo base (null en ejercicios propios). */
+  catalogKey?: string | null
 }
 
 export interface PlanItem {

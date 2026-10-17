@@ -131,8 +131,19 @@ async function claimMembership(): Promise<(Membership & { profile: Record<string
   return (data as (Membership & { profile: Record<string, unknown> | null }) | null) ?? null
 }
 
+async function catalogUpToDate() {
+  try {
+    const { ensureCatalog } = await import('./seed')
+    await ensureCatalog()
+  } catch (e) {
+    console.warn('catálogo', e)
+  }
+}
+
 async function syncOnce() {
   const sb = supabase()
+  // Sin cuenta: completar el catálogo localmente. Con cuenta: después de bajar la nube.
+  if ((await getMeta<string>('ownerId'))?.startsWith('local-')) await catalogUpToDate()
   const pending = await countPending()
   if (!sb) return setStatus({ state: 'local-only', pending })
   const { data } = await sb.auth.getSession()
@@ -156,6 +167,7 @@ async function syncOnce() {
     })
     failed.push(...(await push(user.id)))
     await pull(user.id)
+    await catalogUpToDate()
     const now = new Date().toISOString()
     setStatus({
       state: failed.length ? 'error' : 'idle',

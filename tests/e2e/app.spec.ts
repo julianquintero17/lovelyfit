@@ -153,3 +153,39 @@ test('pantallas sin desborde horizontal en 390 px', async ({ page }) => {
     if (path === '/entrenar/plan/') await shot(page, '07-plan')
   }
 })
+
+test('modo libre: elegir ejercicios tocando y registrar con botones', async ({ page }) => {
+  await onboard(page)
+  await page.goto('/entrenar/')
+  await page.getByTestId('start-free').click()
+  // La grilla se abre sola; filtrar por polea y elegir
+  await page.getByRole('button', { name: 'polea', exact: true }).click()
+  await page.getByTestId('exercise-tile').filter({ hasText: 'Jalón al pecho' }).click()
+  const card = page.getByTestId('exercise-card').first()
+  await expect(card).toContainText('Jalón al pecho')
+  const stepper = card.getByTestId('set-stepper')
+  await stepper.getByRole('button', { name: /Sumar 5 kg/ }).click()
+  await stepper.getByRole('button', { name: /Sumar 5 kg/ }).click()
+  await expect(card.getByLabel('Kilos serie 1')).toHaveValue('10')
+  await card.getByTestId('set-check').first().click()
+  // Segunda serie: "igual que la anterior"
+  await card.getByTestId('repeat-set').click()
+  await expect(card.getByLabel('Kilos serie 2')).toHaveValue('10')
+  await expect(page.getByTestId('save-state')).toContainText('Guardado')
+  await shot(page, '08-libre')
+})
+
+test('cargar una sesión que ya hice, con fecha', async ({ page }) => {
+  await onboard(page)
+  await page.goto('/entrenar/')
+  await page.getByTestId('past-session').click()
+  await page.getByTestId('past-create').click()
+  await page.getByLabel('Buscar ejercicio').fill('prensa')
+  await page.getByTestId('exercise-tile').filter({ hasText: 'Prensa de piernas' }).click()
+  const card = page.getByTestId('exercise-card').first()
+  await card.getByLabel('Kilos serie 1').fill('120')
+  await card.getByTestId('set-check').first().click()
+  await expect(page.getByTestId('rest-bar')).toHaveCount(0) // sesión pasada: sin descanso
+  await page.goto('/')
+  await expect(page.getByTestId('week-count')).toContainText('1')
+})

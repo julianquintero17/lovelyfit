@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { softDelete } from '@/lib/db'
-import { fmtDay, weekdayLong, weekDays } from '@/lib/dates'
+import { dayKey, fmtDay, isValidDayKey, weekdayLong, weekDays } from '@/lib/dates'
 import { useProfile, useRows, useToday } from '@/lib/hooks'
 import { doneSessions } from '@/lib/stats'
-import { activeSession, sessionMinutes, startSession } from '@/lib/training'
+import { activeSession, sessionMinutes, startSession, type PastSession } from '@/lib/training'
 import type { Activity, Plan, PlanDay, Session } from '@/lib/types'
 import { ActivityForm } from '@/components/Forms'
 import { RouteMap } from '@/components/RouteMap'
@@ -23,7 +23,7 @@ export default function TrainPage() {
   const sessions = useRows<Session>('sessions')
   const activities = useRows<Activity>('activities')
   const current = useLiveQuery(() => activeSession(), [])
-  const [sheet, setSheet] = useState<null | 'cardio'>(null)
+  const [sheet, setSheet] = useState<null | 'cardio' | 'past'>(null)
   const [openAct, setOpenAct] = useState<Activity | null>(null)
   const [editAct, setEditAct] = useState(false)
 
@@ -50,14 +50,28 @@ export default function TrainPage() {
         <Link href="/entrenar/plan/" className="btn sm ghost">Editar plan</Link>
       </div>
 
-      {current && (
+      {current ? (
         <Link href={`/entrenar/sesion/?id=${current.id}`} className="card brand" style={{ textDecoration: 'none' }}>
           <p className="kicker">Sesión en curso</p>
           <h2>{current.name} · continuar →</h2>
         </Link>
+      ) : (
+        <div className="modes">
+          <button className="mode primary" onClick={() => document.getElementById('plan-days')?.scrollIntoView({ behavior: 'smooth' })}>
+            <span className="title">Con rutina</span>
+            <span className="small" style={{ opacity: 0.85 }}>Seguí un día de tu plan</span>
+          </button>
+          <button className="mode" onClick={() => begin(null)} data-testid="start-free">
+            <span className="title">Libre</span>
+            <span className="small muted">Elegí ejercicios a medida que los hacés</span>
+          </button>
+        </div>
       )}
+      <button className="linkbtn small" style={{ alignSelf: 'flex-start' }} onClick={() => setSheet('past')} data-testid="past-session">
+        + Cargar una sesión que ya hiciste
+      </button>
 
-      <section className="stack">
+      <section className="stack" id="plan-days">
         <div className="row between">
           <h2>{plan?.name ?? 'Sin plan activo'}</h2>
         </div>
@@ -81,7 +95,6 @@ export default function TrainPage() {
             </div>
           )
         })}
-        <button className="btn quiet" onClick={() => begin(null)} disabled={!!current}>Sesión libre</button>
         {current && <p className="tiny muted" style={{ margin: 0 }}>Terminá o descartá la sesión en curso antes de empezar otra.</p>}
       </section>
 
@@ -136,6 +149,12 @@ export default function TrainPage() {
         </div>
       </section>
 
+      <Sheet open={sheet === 'past'} onClose={() => setSheet(null)} title="Cargar sesión hecha">
+        <PastSessionForm days={planDays} onCreate={async (day, past) => {
+          const r = await persist(() => startSession(day, profile?.timezone, past), 'Sesión creada: cargá tus series')
+          if (r.ok) router.push(`/entrenar/sesion/?id=${r.value.id}`)
+        }} />
+      </Sheet>
       <Sheet open={sheet === 'cardio'} onClose={() => setSheet(null)} title="Caminata, bici o carrera">
         <ActivityForm onDone={() => setSheet(null)} />
       </Sheet>
@@ -162,6 +181,37 @@ export default function TrainPage() {
           </div>
         ))}
       </Sheet>
+    </div>
+  )
+}
+
+function PastSessionForm({ days, onCreate }: { days: PlanDay[]; onCreate: (day: PlanDay | null, past: PastSession) => void }) {
+  const [date, setDate] = useState(dayKey())
+  const [time, setTime] = useState('07:00')
+  const [minutes, setMinutes] = useState('60')
+  const [dayId, setDayId] = useState<string>('')
+  const m = Number(minutes)
+  const valid = isValidDayKey(date) && date <= dayKey() && /^\d{2}:\d{2}$/.test(time) && m > 0 && m <= 300
+  return (
+    <div className="stack">
+      <p className="small muted" style={{ margin: 0 }}>Para pasar lo que anotaste en el gimnasio. Después cargás ejercicios y series como siempre.</p>
+      <div className="grid2">
+        <label className="field">Día<input className="input" type="date" value={date} max={dayKey()} onChange={(e) => setDate(e.target.value)} /></label>
+        <label className="field">Hora de inicio<input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} /></label>
+      </div>
+      <label className="field">Duración (min)<input className="input" inputMode="numeric" value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>
+      <label className="field">
+        ¿Qué hiciste?
+        <select className="input" value={dayId} onChange={(e) => setDayId(e.target.value)}>
+          <option value="">Libre (elijo los ejercicios)</option>
+          {days.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </label>
+      <button className="btn block" disabled={!valid} data-testid="past-create" onClick={() => {
+        // Hora local de Buenos Aires (UTC−3, sin horario de verano)
+        const startedAt = new Date(`${date}T${time}:00-03:00`).toISOString()
+        onCreate(days.find((d) => d.id === dayId) ?? null, { startedAt, minutes: m })
+      }}>Crear y cargar series</button>
     </div>
   )
 }

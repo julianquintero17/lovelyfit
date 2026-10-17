@@ -71,8 +71,7 @@ h3 { font-size: 18px; }
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; gap: 10px;
   padding: calc(var(--safe-t) + 10px) 16px 10px;
-  background: color-mix(in srgb, var(--cream) 92%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: var(--cream);
   border-bottom: 1px solid color-mix(in srgb, var(--stone) 60%, transparent);
 }
 .brand { font-family: var(--f-title); font-weight: 700; font-size: 20px; color: var(--deep); text-decoration: none; display: flex; align-items: center; gap: 8px; }
@@ -260,3 +259,29 @@ textarea.input { min-height: 84px; resize: vertical; }
 
 .linkbtn.danger { color: var(--danger); }
 a.badge { min-height: 44px; }
+
+/* Serie activa y panel rápido */
+.setrow.active input { border-color: var(--lab); }
+.setrow.warmup .idx { color: var(--clay-ink); }
+.stepper { margin-top: 8px; padding: 10px; border-radius: var(--r); background: var(--offwhite); border: var(--line); display: grid; gap: 8px; }
+.stepper-row { display: grid; grid-template-columns: 44px 1fr 72px 1fr; gap: 8px; align-items: center; }
+.stepbtn { min-height: 48px; border-radius: 12px; border: 1.5px solid var(--stone); background: var(--surface); font-family: var(--f-title); font-weight: 700; font-size: 18px; cursor: pointer; }
+.stepbtn:active { background: color-mix(in srgb, var(--lab) 12%, var(--surface)); }
+.stepval { text-align: center; font-size: 26px; }
+
+/* Grilla de ejercicios */
+.scroll-x { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px 2px; }
+.scroll-x::-webkit-scrollbar { display: none; }
+.scroll-x .chip { flex: none; }
+.exgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.extile {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 6px;
+  min-height: 76px; padding: 12px; text-align: left; cursor: pointer;
+  border: var(--line); border-radius: var(--r); background: var(--surface);
+}
+.extile:active { border-color: var(--lab); background: color-mix(in srgb, var(--lab) 8%, var(--surface)); }
+.extile-name { font-weight: 600; font-size: 15px; line-height: 1.25; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mode { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--r); border: var(--line); background: var(--surface); text-align: left; cursor: pointer; min-height: 110px; }
+.mode.primary { background: var(--lab); border-color: var(--lab); color: var(--cream); }
+.mode .title { font-size: 22px; }

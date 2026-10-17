@@ -208,3 +208,29 @@ describe('cuentas en el mismo teléfono', () => {
     expect((await getDB().measurements.get(local.id))?.ownerId).toBe('user-a')
   })
 })
+
+describe('catálogo', () => {
+  it('seed carga el catálogo completo y ensureCatalog no duplica', async () => {
+    const { CATALOG } = await import('@/lib/catalog')
+    const { ensureCatalog } = await import('@/lib/seed')
+    await seedFor()
+    expect(await getDB().exercises.count()).toBe(CATALOG.length)
+    expect(await ensureCatalog()).toBe(0)
+    expect(await getDB().exercises.count()).toBe(CATALOG.length)
+  })
+  it('cuentas viejas reciben los ejercicios nuevos y conservan los suyos', async () => {
+    const { CATALOG } = await import('@/lib/catalog')
+    const { ensureCatalog } = await import('@/lib/seed')
+    await seedFor()
+    // Simular cuenta vieja: borrar algunos, quitar claves y usar un nombre anterior
+    const all = await getDB().exercises.toArray()
+    const tri = all.find((e) => e.catalogKey === 'triceps_pushdown')!
+    const keep = new Set([...all.slice(0, 9).map((e) => e.id), tri.id])
+    await getDB().exercises.bulkDelete(all.filter((e) => !keep.has(e.id)).map((e) => e.id))
+    await getDB().exercises.update(tri.id, { catalogKey: null, name: 'Tríceps en polea' })
+    const added = await ensureCatalog()
+    expect(added).toBe(CATALOG.length - 10)
+    expect(await getDB().exercises.count()).toBe(CATALOG.length)
+    expect((await getDB().exercises.get(tri.id))?.catalogKey).toBe('triceps_pushdown')
+  })
+})

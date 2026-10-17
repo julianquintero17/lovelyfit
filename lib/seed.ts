@@ -1,65 +1,10 @@
-import { getDB, insert, setMeta, uuid } from './db'
+import { getDB, insert, setMeta, update, uuid } from './db'
+import { CATALOG } from './catalog'
 import { DEFAULT_TZ } from './dates'
 import type { Exercise, Habit, MealTemplate, MuscleGroup, Plan, PlanDay, PlanItem, Profile, Reminder } from './types'
 
 // Contenido inicial basado en lo que declaraste. Todo es editable y nada de esto
 // es un plan profesional validado ni una indicación médica.
-
-interface ExSeed {
-  key: string
-  name: string
-  group: MuscleGroup
-  equipment: string
-  incrementKg: number
-  instructions: string
-}
-
-export const EXERCISE_SEED: ExSeed[] = [
-  { key: 'bench', name: 'Press banca (barra)', group: 'pecho', equipment: 'Barra', incrementKg: 2.5,
-    instructions: 'Escápulas juntas y pies firmes. Bajá controlado hasta el pecho y empujá sin rebotar. Usá series de aproximación y, con cargas altas, alguien que asista o topes de seguridad.' },
-  { key: 'chest_press', name: 'Press pecho en máquina', group: 'pecho', equipment: 'Máquina', incrementKg: 5,
-    instructions: 'Ajustá el asiento para que las manijas queden a la altura media del pecho. Empujá sin bloquear de golpe los codos y volvé lento.' },
-  { key: 'incline_press', name: 'Press inclinado en máquina', group: 'pecho', equipment: 'Máquina', incrementKg: 5,
-    instructions: 'Espalda apoyada, manijas a la altura de la parte alta del pecho. Recorrido completo y controlado.' },
-  { key: 'fly_machine', name: 'Aperturas en máquina', group: 'pecho', equipment: 'Máquina', incrementKg: 5,
-    instructions: 'Codos levemente flexionados y fijos. Juntá adelante sin chocar y abrí hasta sentir estiramiento cómodo.' },
-  { key: 'fly_db', name: 'Aperturas con mancuernas', group: 'pecho', equipment: 'Mancuernas', incrementKg: 2.5,
-    instructions: 'En banco plano, codos semiflexionados. Bajá en arco hasta un estiramiento cómodo, sin forzar el hombro.' },
-  { key: 'chest_row', name: 'Remo con pecho apoyado', group: 'espalda', equipment: 'Máquina / banco inclinado', incrementKg: 5,
-    instructions: 'Pecho apoyado para no cargar la zona lumbar. Llevá los codos hacia atrás juntando escápulas y bajá controlado.' },
-  { key: 'db_row', name: 'Remo con mancuerna con apoyo', group: 'espalda', equipment: 'Mancuerna y banco', incrementKg: 2.5,
-    instructions: 'Mano y rodilla en el banco, espalda neutra. Llevá la mancuerna hacia la cadera, sin girar el torso.' },
-  { key: 'seated_row', name: 'Remo sentado en polea', group: 'espalda', equipment: 'Polea', incrementKg: 5,
-    instructions: 'Torso estable, sin balancearte. Tirá hacia el abdomen y dejá que los hombros se estiren al volver.' },
-  { key: 'lat_pulldown', name: 'Jalón al pecho', group: 'espalda', equipment: 'Polea', incrementKg: 5,
-    instructions: 'Agarre algo más ancho que hombros. Bajá la barra hacia la parte alta del pecho llevando codos abajo; evitá tirar detrás de la nuca.' },
-  { key: 'pullup', name: 'Dominadas (libres o asistidas)', group: 'espalda', equipment: 'Barra fija / máquina asistida', incrementKg: 2.5,
-    instructions: 'Arrancá colgado con hombros activos. Subí hasta pasar el mentón sin balanceo y bajá controlado. Si falta técnica, usá asistencia.' },
-  { key: 'lateral_raise', name: 'Elevaciones laterales', group: 'hombros', equipment: 'Mancuernas / polea', incrementKg: 1,
-    instructions: 'Subí los brazos hacia los costados hasta la altura de los hombros, codos levemente flexionados, sin impulso.' },
-  { key: 'curl_db', name: 'Curl de bíceps con mancuernas', group: 'bíceps', equipment: 'Mancuernas', incrementKg: 1,
-    instructions: 'Codos pegados al cuerpo. Subí sin balancear el torso y bajá en dos o tres segundos.' },
-  { key: 'curl_bar', name: 'Curl con barra / curl 21', group: 'bíceps', equipment: 'Barra', incrementKg: 2.5,
-    instructions: 'Variante 21: 7 reps en la mitad inferior, 7 en la superior y 7 completas. Registrá las 21 como una serie.' },
-  { key: 'triceps_pushdown', name: 'Tríceps en polea', group: 'tríceps', equipment: 'Polea', incrementKg: 2.5,
-    instructions: 'Codos fijos a los costados. Extendé completo y volvé hasta 90° sin que se adelanten los codos. La carga depende de cada máquina.' },
-  { key: 'triceps_overhead', name: 'Tríceps sobre la cabeza en polea', group: 'tríceps', equipment: 'Polea', incrementKg: 2.5,
-    instructions: 'De espaldas a la polea, codos apuntando al frente. Extendé sin arquear la zona lumbar.' },
-  { key: 'leg_press', name: 'Prensa de piernas', group: 'piernas', equipment: 'Máquina', incrementKg: 10,
-    instructions: 'Pies a la altura de hombros. Bajá hasta donde la zona lumbar siga apoyada y empujá sin bloquear las rodillas.' },
-  { key: 'leg_curl', name: 'Curl femoral', group: 'piernas', equipment: 'Máquina', incrementKg: 5,
-    instructions: 'Ajustá el rodillo sobre el tobillo. Flexioná completo y volvé lento, sin levantar la cadera.' },
-  { key: 'leg_ext', name: 'Extensión de cuádriceps', group: 'piernas', equipment: 'Máquina', incrementKg: 5,
-    instructions: 'Rodilla alineada con el eje de la máquina. Extendé y bajá controlado.' },
-  { key: 'squat', name: 'Sentadilla (barra)', group: 'piernas', equipment: 'Barra / rack', incrementKg: 2.5,
-    instructions: 'Opcional. Si tenés antecedentes de cuello o columna, consultá con tu especialista la posición de la barra y la carga antes de usarla. Usá topes de seguridad.' },
-  { key: 'crunch', name: 'Abdominales (bloque)', group: 'core', equipment: 'Colchoneta / polea', incrementKg: 0,
-    instructions: 'Tu bloque habitual de ~5 minutos. Evitá tirar del cuello con las manos.' },
-  { key: 'bike', name: 'Bicicleta fija', group: 'cardio', equipment: 'Bicicleta', incrementKg: 0,
-    instructions: 'Ritmo cómodo: podés hablar en frases cortas. Registrá minutos.' },
-  { key: 'treadmill', name: 'Cinta (caminar)', group: 'cardio', equipment: 'Cinta', incrementKg: 0,
-    instructions: 'Caminata a ritmo cómodo o con algo de inclinación.' },
-]
 
 const item = (exerciseId: string, sets: number, repMin: number, repMax: number, restSec: number, minutes: number | null = null): PlanItem => ({
   key: uuid(), exerciseId, sets, repMin, repMax, restSec, targetRir: minutes ? null : 3, minutes, note: '',
@@ -96,10 +41,10 @@ export async function seedFor(input: Partial<ProfileFields> = {}): Promise<void>
     await insert<Profile>('profiles', profile)
 
     const ex: Record<string, string> = {}
-    for (const e of EXERCISE_SEED) {
+    for (const e of CATALOG) {
       const row = await insert<Exercise>('exercises', {
-        name: e.name, group: e.group, equipment: e.equipment, instructions: e.instructions,
-        incrementKg: e.incrementKg, photoId: null, isCustom: false,
+        name: e.name, group: e.group, equipment: e.kind, instructions: e.instructions,
+        incrementKg: e.incrementKg, photoId: null, isCustom: false, catalogKey: e.key,
       })
       ex[e.key] = row.id
     }
@@ -170,4 +115,39 @@ export async function seedFor(input: Partial<ProfileFields> = {}): Promise<void>
     for (const r of reminders) await insert<Reminder>('reminders', r)
   })
   await setMeta('seeded', true)
+}
+
+// Nombres de versiones anteriores del catálogo → clave actual
+const LEGACY_NAMES: Record<string, string> = {
+  'Tríceps en polea': 'triceps_pushdown',
+  'Curl femoral': 'leg_curl',
+  'Aperturas en máquina': 'fly_machine',
+}
+
+/**
+ * Agrega a la cuenta los ejercicios del catálogo que le falten (sin duplicar)
+ * y completa la clave en los que ya existían. Idempotente.
+ */
+export async function ensureCatalog(): Promise<number> {
+  const db = getDB()
+  if ((await db.profiles.count()) === 0) return 0
+  const all = await db.exercises.toArray()
+  const byKey = new Set(all.map((e) => e.catalogKey).filter(Boolean))
+  const byName = new Map(all.filter((e) => !e.catalogKey && !e.isCustom).map((e) => [e.name, e]))
+  let added = 0
+  for (const item of CATALOG) {
+    if (byKey.has(item.key)) continue
+    const legacy = byName.get(item.name) ?? [...byName.entries()].find(([n]) => LEGACY_NAMES[n] === item.key)?.[1]
+    if (legacy) {
+      await update<Exercise>('exercises', legacy.id, { catalogKey: item.key, name: item.name, equipment: item.kind })
+      byName.delete(legacy.name)
+      continue
+    }
+    await insert<Exercise>('exercises', {
+      name: item.name, group: item.group, equipment: item.kind, instructions: item.instructions,
+      incrementKg: item.incrementKg, photoId: null, isCustom: false, catalogKey: item.key,
+    })
+    added++
+  }
+  return added
 }

@@ -8,16 +8,23 @@ export async function activeSession(): Promise<Session | undefined> {
 }
 
 /** Crea la sesión con ejercicios y series precargadas (kg de la última vez). */
-export async function startSession(day: PlanDay | null, tz?: string): Promise<Session> {
+export interface PastSession {
+  /** Fecha y hora de inicio (ISO) y duración en minutos de una sesión ya hecha. */
+  startedAt: string
+  minutes: number
+}
+
+export async function startSession(day: PlanDay | null, tz?: string, past?: PastSession): Promise<Session> {
   const db = getDB()
   return db.transaction('rw', db.tables, async () => {
+    const start = past ? new Date(past.startedAt) : new Date()
     const session = await insert<Session>('sessions', {
       planDayId: day?.id ?? null,
       name: day?.name ?? 'Sesión libre',
-      date: dayKey(new Date(), tz),
-      startedAt: nowISO(),
-      endedAt: null,
-      status: 'in_progress',
+      date: dayKey(start, tz),
+      startedAt: start.toISOString(),
+      endedAt: past ? new Date(start.getTime() + past.minutes * 60000).toISOString() : null,
+      status: past ? 'done' : 'in_progress',
       feeling: null,
       notes: '',
     })

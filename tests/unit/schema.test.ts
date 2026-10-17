@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { getDB, LovelyDB, setDB, SYNC_TABLES } from '@/lib/db'
 import { seedFor } from '@/lib/seed'
@@ -7,13 +7,15 @@ import { insert } from '@/lib/db'
 import type { Activity, DailyMetric, Meal, Measurement, Photo, HabitLog, Session, SessionExercise, WorkSet } from '@/lib/types'
 
 // Cada campo que la app sube debe existir como columna en la migración aplicada.
-const sql = readFileSync(new URL('../../supabase/migrations/0001_lovely_fit.sql', import.meta.url), 'utf8')
+const dir = new URL('../../supabase/migrations/', import.meta.url)
+const sql = readdirSync(dir).sort().map((f) => readFileSync(new URL(f, dir), 'utf8')).join('\n')
 const BASE = ['id', 'owner_id', 'created_at', 'updated_at', 'deleted_at', 'server_updated_at']
 function columns(table: string): Set<string> {
   const m = new RegExp(`\\('${table}', \\$c\\$(.*?)\\$c\\$\\)`).exec(sql)
   if (!m) throw new Error(`falta ${table} en la migración`)
   const cols = m[1].split(',').map((c) => c.trim().split(/\s+/)[0].replace(/"/g, '')).filter((c) => /^[a-z_]+$/.test(c))
-  return new Set([...BASE, ...cols])
+  const added = [...sql.matchAll(new RegExp(`alter table public\\.${table} add column if not exists (\\w+)`, 'g'))].map((x) => x[1])
+  return new Set([...BASE, ...cols, ...added])
 }
 
 describe('esquema local ↔ Supabase', () => {
