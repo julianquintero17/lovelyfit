@@ -9,7 +9,8 @@ import {
   achievements, dailyValue, latest, monthPeriod, series, stepStats, suggestWeekdayStepGoal, summarize, weekPeriod, type Period,
 } from '@/lib/stats'
 import { describeSets, recentPerformances } from '@/lib/training'
-import type { Activity, DailyMetric, Exercise, Measurement, Photo, Session } from '@/lib/types'
+import type { Activity, DailyMetric, Exercise, Measurement, Photo, Session, WorkSet } from '@/lib/types'
+import { insights, personalRecords, setsByGroup, stepsTrainingVsRest, weeklyConsistency, weightTrend } from '@/lib/analytics'
 import { MeasurementForm, StepsForm } from '@/components/Forms'
 import { PhotoButton, PhotoImg } from '@/components/Photo'
 import { LineChart, Sheet, WeekBars, persist } from '@/components/ui'
@@ -27,6 +28,7 @@ export default function ProgressPage() {
   const metrics = useRows<DailyMetric>('dailyMetrics')
   const photos = useRows<Photo>('photos')
   const exercises = useRows<Exercise>('exercises')
+  const allSets = useRows<WorkSet>('sets')
   const [sheet, setSheet] = useState<null | 'weight' | 'waist' | 'steps' | 'photos'>(null)
   const [exId, setExId] = useState<string>('')
 
@@ -90,6 +92,9 @@ export default function ProgressPage() {
             : `vs. ${mode === 'week' ? 'semana' : 'mes'} anterior: ${delta(sum.sessions, prev.sessions)} sesiones · ${delta(sum.strengthMinutes + sum.cardioMinutes, prev.strengthMinutes + prev.cardioMinutes)} min`}
         </p>
       </div>
+
+      <Analysis period={period} today={today} goal={goal}
+        sessions={sessions ?? []} sets={allSets ?? []} exercises={exercises ?? []} measurements={measurements ?? []} metrics={metrics ?? []} />
 
       {/* Peso y cintura */}
       <section className="card stack">
@@ -237,6 +242,88 @@ function MeasurementList({ measurements }: { measurements: Measurement[] }) {
           </div>
         )}
       </Sheet>
+    </>
+  )
+}
+
+function Analysis(props: {
+  period: Period; today: string; goal: number
+  sessions: Session[]; sets: WorkSet[]; exercises: Exercise[]; measurements: Measurement[]; metrics: DailyMetric[]
+}) {
+  const { period, today, goal } = props
+  const ctx = { sessions: props.sessions, sets: props.sets, exercises: props.exercises }
+  const consistency = weeklyConsistency(props.sessions, today)
+  const prs = personalRecords(ctx, period)
+  const groups = setsByGroup(ctx, period)
+  const trend = weightTrend(props.measurements)
+  const steps = stepsTrainingVsRest(props.sessions, props.metrics, period)
+  const notes = insights({ consistency, goal, prs: prs.inPeriod, trend, steps })
+  const maxWeek = Math.max(goal, ...consistency.map((w) => w.count))
+  const maxGroup = Math.max(1, ...groups.map((g) => g.sets))
+
+  return (
+    <>
+      {notes.length > 0 && (
+        <section className="card stack" style={{ gap: 8 }} data-testid="insights">
+          <p className="kicker" style={{ margin: 0 }}>En pocas palabras</p>
+          {notes.map((n, i) => <p key={i} style={{ margin: 0 }}>{n}</p>)}
+        </section>
+      )}
+
+      <section className="card stack">
+        <div className="card-title" style={{ margin: 0 }}><h3>Constancia</h3><span className="tiny muted">últimas 8 semanas · meta {goal}</span></div>
+        <div role="img" aria-label={`Sesiones por semana: ${consistency.map((w) => w.count).join(', ')}`}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, alignItems: 'end', height: 96, position: 'relative' }}>
+          <div aria-hidden style={{ position: 'absolute', left: 0, right: 0, bottom: 18 + (goal / maxWeek) * 64, borderTop: '1.5px dashed var(--clay)' }} />
+          {consistency.map((w, i) => (
+            <div key={w.week} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, justifyContent: 'flex-end', height: '100%' }}>
+              <span className="tiny num">{w.count || ''}</span>
+              <div style={{ width: '70%', height: Math.max(3, (w.count / maxWeek) * 64), borderRadius: 6,
+                background: w.count === 0 ? 'var(--stone)' : w.count >= goal ? 'var(--lab)' : 'var(--olive)', opacity: i === 7 ? 0.65 : 1 }} />
+              <span className="tiny muted">{fmtShort(w.week)}</span>
+            </div>
+          ))}
+        </div>
+        <p className="tiny muted" style={{ margin: 0 }}>Verde oscuro = meta cumplida. La última barra es la semana en curso.</p>
+      </section>
+
+      <section className="card stack">
+        <div className="card-title" style={{ margin: 0 }}><h3>Series por grupo muscular</h3><span className="tiny muted">{period.from === period.to ? '' : 'en el período'}</span></div>
+        {groups.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Sin series completadas en este período.</p> : (
+          <div className="stack" style={{ gap: 6 }}>
+            {groups.map((g) => (
+              <div key={g.group} style={{ display: 'grid', gridTemplateColumns: '84px 1fr 32px', gap: 8, alignItems: 'center' }}>
+                <span className="small" style={{ textTransform: 'capitalize' }}>{g.group}</span>
+                <div style={{ height: 12, borderRadius: 6, background: 'var(--offwhite)' }}>
+                  <div style={{ width: `${(g.sets / maxGroup) * 100}%`, height: '100%', borderRadius: 6, background: 'var(--lab)' }} />
+                </div>
+                <span className="small num" style={{ textAlign: 'right' }}>{g.sets}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card stack">
+        <div className="card-title" style={{ margin: 0 }}><h3>Récords</h3><span className="tiny muted">1RM estimado</span></div>
+        {prs.best.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Aparecen cuando completes series con kilos y repes.</p> : (
+          <div className="list">
+            {prs.best.slice(0, 6).map((p) => {
+              const fresh = prs.inPeriod.find((x) => x.exerciseId === p.exerciseId)
+              return (
+                <div key={p.exerciseId} className="item" style={{ minHeight: 48 }}>
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="ellipsis" style={{ fontWeight: 600 }}>{p.name}{fresh && <span className="badge ok" style={{ marginLeft: 6 }}>nuevo</span>}</div>
+                    <div className="tiny muted">{String(p.weightKg).replace('.', ',')} kg × {p.reps} · {fmtDay(p.date)}</div>
+                  </div>
+                  <span className="num" style={{ fontSize: 20 }}>{String(p.e1rm).replace('.', ',')}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <p className="tiny muted" style={{ margin: 0 }}>Estimación para comparar tu progreso, no una carga para probar.</p>
+      </section>
     </>
   )
 }

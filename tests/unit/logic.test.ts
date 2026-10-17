@@ -225,7 +225,7 @@ describe('catálogo', () => {
     // Simular cuenta vieja: borrar algunos, quitar claves y usar un nombre anterior
     const all = await getDB().exercises.toArray()
     const tri = all.find((e) => e.catalogKey === 'triceps_pushdown')!
-    const keep = new Set([...all.slice(0, 9).map((e) => e.id), tri.id])
+    const keep = new Set([...all.filter((e) => e.id !== tri.id).slice(0, 9).map((e) => e.id), tri.id])
     await getDB().exercises.bulkDelete(all.filter((e) => !keep.has(e.id)).map((e) => e.id))
     await getDB().exercises.update(tri.id, { catalogKey: null, name: 'Tríceps en polea' })
     const added = await ensureCatalog()
