@@ -8,24 +8,20 @@
 - Nunca se inventa una ruta a partir de pasos o distancia: sin coordenadas reales no hay mapa.
 - El audio que sale por el reloj es un tema de Bluetooth del iPhone, separado de esto.
 
-## Salud + Atajos — **implementado, sin probar en iPhone**
-Lovely Fit acepta: `https://TU-APP.vercel.app/importar/?date=AAAA-MM-DD&steps=8123`
-(opcionales: `active_kcal`, `exercise_min`, `resting_hr`). Muestra los valores y guarda al confirmar.
-Reimportar el mismo día **reemplaza** (fecha + tipo + fuente), no duplica.
+## Salud + Atajos — **listo para probar**
+Camino: reloj DM58 → GloryFitPro → Apple Salud → Atajo diario → Supabase (`fit_ingest_health`) → Lovely Fit.
 
-Atajo sugerido (a armar y verificar):
-1. *Buscar muestras de Salud*: Pasos, fecha = ayer, agrupar por día → *Calcular estadísticas* (suma).
-2. *Formatear fecha* (ayer) con formato personalizado `yyyy-MM-dd`.
-3. *Texto*: `https://TU-APP.vercel.app/importar/?date=[Fecha]&steps=[Suma]`.
-4. *Abrir URL*.
+- En la app: Mis datos → Integraciones → **Conectar Salud** genera un token personal (se guarda solo su hash).
+  El token **solo permite escribir** métricas del día y entrenamientos del dueño; no permite leer nada.
+- El Atajo usa *Obtener contenido de URL* (POST JSON) — no abre Safari, así que no importa que Safari y la
+  app instalada tengan almacenamiento separado.
+- Reenviar el mismo día actualiza el valor (no duplica). Los entrenamientos se deduplican por hora de inicio y tipo.
+- Límites conocidos: con el iPhone bloqueado Salud puede negar los datos (programar a una hora de uso);
+  Atajos no expone rutas GPS; GloryFitPro declara HealthKit pero qué tipos escribe hay que verificarlo en Salud.
+- Fuentes de la investigación: listing de GloryFitPro en App Store (HealthKit), Gadgetbridge (DM58 sin
+  sincronización abierta), foro Automators (falla con teléfono bloqueado).
 
-**Limitación importante:** "Abrir URL" abre **Safari**, no la app instalada, y en iOS no comparten almacenamiento.
-Por eso este camino solo sirve de verdad **con la nube activada** y la misma cuenta iniciada en Safari:
-el dato entra en Safari, se sube a Supabase y la app instalada lo baja. Sin nube, el dato queda en Safari.
-Además: Salud puede no responder con el teléfono bloqueado; la automatización diaria no está garantizada.
-Importar el día anterior completo evita datos parciales.
-
-La energía activa se guarda como dato, **no** se suma a ningún presupuesto de comida.
+La ruta `/importar/?date=…&steps=…` sigue disponible para carga manual, pero ya no es el camino recomendado.
 
 ## Notificaciones — **no activas**
 En iPhone requieren PWA instalada (iOS 16.4+), permiso y envío desde servidor (Web Push con claves VAPID).

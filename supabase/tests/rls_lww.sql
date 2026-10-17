@@ -65,3 +65,26 @@ do $$ begin
   raise exception 'FALLO: anon pudo leer';
 exception when insufficient_privilege then raise notice 'anon_denied ok';
 end $$;
+-- Ingreso desde Atajos (u1 es miembro activo)
+reset role; set role authenticated;
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+set request.jwt.claims = '{"email":"u1@test.com"}';
+create temp table _tok as select fit_create_ingest_token() t;
+reset role; grant select on _tok to anon; set role anon;
+select 'ingest_ok', (fit_ingest_health((select t from _tok), current_date - 1, 8123, 410, null, 61,
+  '[{"type":"Walking","start":"2026-10-16T08:10:00-03:00","minutes":42,"km":3.4}]'::jsonb) ->> 'actividades_nuevas') = '1' as ok;
+select 'ingest_retry_no_dup', (fit_ingest_health((select t from _tok), current_date - 1, 9000, null, null, null,
+  '[{"type":"Walking","start":"2026-10-16T08:10:00-03:00","minutes":42,"km":3.4}]'::jsonb) ->> 'actividades_nuevas') = '0' as ok;
+do $$ begin
+  perform fit_ingest_health('token-falso', current_date, 1);
+  raise exception 'FALLO: token falso aceptado';
+exception when invalid_authorization_specification then raise notice 'fake_token_rejected ok';
+end $$;
+do $$ begin
+  perform 1 from fit_ingest_tokens;
+  raise exception 'FALLO: anon leyó tokens';
+exception when insufficient_privilege then raise notice 'anon_cannot_read_tokens ok';
+end $$;
+reset role;
+select 'steps_updated_not_duplicated', (select count(*) from fit_daily_metrics where kind = 'steps' and source = 'shortcut') = 1
+  and (select value from fit_daily_metrics where kind = 'steps' and source = 'shortcut') = 9000 as ok;

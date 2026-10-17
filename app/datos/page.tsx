@@ -13,6 +13,7 @@ import { dayKey } from '@/lib/dates'
 import Link from 'next/link'
 import type { Profile, Reminder } from '@/lib/types'
 import { Login } from '@/components/Login'
+import { HealthConnect } from '@/components/HealthConnect'
 import { parseNum, persist, showToast } from '@/components/ui'
 
 export default function MyDataPage() {
@@ -320,13 +321,16 @@ function IntegrationsCard() {
   return (
     <section className="card stack" id="integraciones">
       <h2>Integraciones</h2>
-      <Integration name="GloryFitPro (reloj DM58)" status="Pendiente de prueba" cls="warn">
-        Registra tus salidas. Falta hacer una salida de prueba y ver si permite exportar el recorrido (GPX u otro). Mientras, cargá a mano o importá un GPX si lo conseguís.
+      <Integration name="GloryFitPro (reloj DM58)" status="Vía Salud" cls="neutral">
+        No tiene API ni exportación conocida: sus datos llegan a través de Salud (abajo). Las rutas GPS no pasan por Salud; si la app permite compartir un GPX, se puede importar en Entrenar.
       </Integration>
-      <Integration name="Salud + Atajos (iPhone)" status="Experimental · sin probar" cls="warn">
-        Un Atajo puede abrir <code className="tiny">{origin}/importar/?date=AAAA-MM-DD&steps=N</code> con los datos del día.
-        Lovely Fit pide confirmación y no duplica (fecha + tipo + fuente). Puede fallar con el teléfono bloqueado. Guía en docs/INTEGRACIONES.md.
-      </Integration>
+      <div className="stack" style={{ gap: 8, borderTop: '1px solid var(--stone)', paddingTop: 12 }}>
+        <div className="row between"><strong>Salud del iPhone (vía Atajos)</strong><span className="badge warn">Listo para probar</span></div>
+        <p className="small muted" style={{ margin: 0 }}>
+          Reloj → GloryFitPro → Salud → un Atajo diario envía pasos, energía, FC en reposo y entrenamientos. Sin abrir la app y sin duplicar.
+        </p>
+        <HealthConnect />
+      </div>
       <Integration name="Notificaciones" status="No activas" cls="neutral">Ver Recordatorios.</Integration>
       <Integration name="Strava / adidas Running" status="Fuera del MVP" cls="neutral">No son dependencias. Strava pedía suscripción para su API; habría que volver a verificar.</Integration>
     </section>
