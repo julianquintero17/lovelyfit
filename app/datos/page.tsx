@@ -15,6 +15,7 @@ import { applyTheme, getTheme, type Theme } from '@/lib/theme'
 import type { Profile, Reminder } from '@/lib/types'
 import { Login } from '@/components/Login'
 import { HealthConnect } from '@/components/HealthConnect'
+import { HealthImport } from '@/components/HealthImport'
 import { parseNum, persist, showToast } from '@/components/ui'
 
 export default function MyDataPage() {
@@ -357,6 +358,10 @@ function IntegrationsCard() {
           Reloj → GloryFitPro → Salud → un Atajo diario envía pasos, energía, FC en reposo y entrenamientos. Sin abrir la app y sin duplicar.
         </p>
         <HealthConnect />
+      </div>
+      <div className="stack" style={{ gap: 8, borderTop: '1px solid var(--stone)', paddingTop: 12 }}>
+        <div className="row between"><strong>Traer el historial de Salud</strong><span className="badge ok">Una vez</span></div>
+        <HealthImport />
       </div>
       <Integration name="Notificaciones" status="No activas" cls="neutral">Ver Recordatorios.</Integration>
       <Integration name="Strava / adidas Running" status="Fuera del MVP" cls="neutral">No son dependencias. Strava pedía suscripción para su API; habría que volver a verificar.</Integration>

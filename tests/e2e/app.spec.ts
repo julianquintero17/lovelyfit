@@ -189,3 +189,19 @@ test('cargar una sesión que ya hice, con fecha', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByTestId('week-count')).toContainText('1')
 })
+
+test('importar exportación de Salud desde Ajustes', async ({ page }) => {
+  const { zipSync, strToU8 } = await import('fflate')
+  const day = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  const xml = `<HealthData>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="iPhone" unit="count" startDate="${day} 08:00:00 -0300" endDate="${day} 08:10:00 -0300" value="7432"/>
+ <Workout workoutActivityType="HKWorkoutActivityTypeWalking" duration="30" durationUnit="min" sourceName="Running" startDate="${day} 19:00:00 -0300" endDate="${day} 19:30:00 -0300"/>
+</HealthData>`
+  await onboard(page)
+  await page.goto('/datos/')
+  // Nombre real de la exportación en español
+  await page.getByTestId('health-zip').setInputFiles({ name: 'exportar.zip', mimeType: 'application/zip', buffer: Buffer.from(zipSync({ 'apple_health_export/exportar.xml': strToU8(xml) })) })
+  await expect(page.getByTestId('health-result')).toContainText('Entrenamientos nuevos: 1')
+  await page.goto('/entrenar/')
+  await expect(page.getByText(/30 min/).first()).toBeVisible()
+})

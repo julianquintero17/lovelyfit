@@ -11,7 +11,7 @@ export interface Base {
   dirty: 0 | 1
 }
 
-export type Source = 'manual' | 'gpx' | 'shortcut' | 'backup' | 'seed'
+export type Source = 'manual' | 'gpx' | 'shortcut' | 'health' | 'backup' | 'seed'
 
 export interface Profile extends Base {
   displayName: string
