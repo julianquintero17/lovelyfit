@@ -70,7 +70,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       ) : (
         <div className="card stack">
           <h2>Entrar con tu cuenta</h2>
-          <p className="small muted" style={{ margin: 0 }}>El acceso es por invitación. Te mandamos un código de 6 dígitos a tu email; si ya usabas la app, traemos tus datos.</p>
+          <p className="small muted" style={{ margin: 0 }}>El acceso es por invitación. La primera vez tocá «Crear cuenta» con tu email invitado y una contraseña; si ya usabas la app, traemos tus datos.</p>
           <Login onDone={onDone} />
           <button className="linkbtn" onClick={() => setMode('start')}>Probar sin cuenta (solo en este teléfono)</button>
         </div>

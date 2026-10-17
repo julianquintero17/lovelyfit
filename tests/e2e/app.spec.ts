@@ -70,6 +70,7 @@ test('sesión de fuerza completa: un toque, autoguardado, recuperación y meta s
   await page.getByRole('button', { name: 'Reabrir' }).click()
   await page.getByTestId('finish').click()
   await page.getByTestId('finish-confirm').click()
+  await expect(page.getByText(/Terminada/)).toBeVisible()
 
   await page.goto('/')
   await expect(page.getByTestId('week-count')).toContainText('1')

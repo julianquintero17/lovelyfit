@@ -42,12 +42,12 @@ export function AppLock() {
             <button className="btn block" onClick={tryUnlock} autoFocus data-testid="unlock">Desbloquear con Face ID</button>
             {failed > 0 && <p className="small danger" role="alert" style={{ margin: 0 }}>No se pudo verificar. Probá de nuevo.</p>}
             {failed > 1 && isCloudConfigured() && (
-              <button className="linkbtn" style={{ alignSelf: 'center' }} onClick={() => setFallback(true)}>Entrar con código por email</button>
+              <button className="linkbtn" style={{ alignSelf: 'center' }} onClick={() => setFallback(true)}>Entrar con mi contraseña</button>
             )}
           </>
         ) : (
           <div className="card stack" style={{ textAlign: 'left' }}>
-            <p className="small muted" style={{ margin: 0 }}>Al entrar con tu código se desactiva el bloqueo; podés volver a activarlo en Mis datos.</p>
+            <p className="small muted" style={{ margin: 0 }}>Al entrar con tu contraseña se desactiva el bloqueo; podés volver a activarlo en Mis datos.</p>
             <Login onDone={() => { disableLock(); setLocked(false) }} />
           </div>
         )}

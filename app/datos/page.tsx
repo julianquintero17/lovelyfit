@@ -7,7 +7,7 @@ import { exportBackup, importBackup, wipeLocal } from '@/lib/backup'
 import { useProfile, useRows, useSyncStatus } from '@/lib/hooks'
 import { requestPersistence, storageEstimate } from '@/lib/photos'
 import { isCloudConfigured } from '@/lib/supabase'
-import { countPending, requestSync, signOut } from '@/lib/sync'
+import { changePassword, countPending, requestSync, signOut } from '@/lib/sync'
 import { disableLock, enableLock, getLock, lockSupported } from '@/lib/applock'
 import { dayKey } from '@/lib/dates'
 import Link from 'next/link'
@@ -144,6 +144,7 @@ function AccountCard() {
           </p>
           {s.error && <p className="small danger" role="alert" style={{ margin: 0 }}>{s.error}</p>}
           <p className="tiny muted" style={{ margin: 0 }}>Se sincroniza con la app abierta y conexión; iOS no permite hacerlo en segundo plano.</p>
+          <PasswordForm />
           <div className="row wrap">
             <button className="btn sm" onClick={() => requestSync()}>Sincronizar ahora</button>
             {s.membership?.role === 'admin' && <Link className="btn sm ghost" href="/datos/equipo/">Equipo y accesos</Link>}
@@ -152,6 +153,27 @@ function AccountCard() {
         </>
       )}
     </section>
+  )
+}
+
+function PasswordForm() {
+  const [open, setOpen] = useState(false)
+  const [pw, setPw] = useState('')
+  if (!open) return <button className="linkbtn small" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>Cambiar contraseña</button>
+  return (
+    <div className="row wrap">
+      <input className="input" type="password" autoComplete="new-password" placeholder="Nueva contraseña (mín. 8)" value={pw} onChange={(e) => setPw(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
+      <button className="btn sm" disabled={pw.length < 8} onClick={async () => {
+        try {
+          await changePassword(pw)
+          showToast('Contraseña actualizada')
+          setOpen(false)
+          setPw('')
+        } catch (e) {
+          showToast(e instanceof Error ? e.message : String(e), true)
+        }
+      }}>Guardar</button>
+    </div>
   )
 }
 
@@ -173,7 +195,7 @@ function SecurityCard() {
       {supported === false ? (
         <p className="small" style={{ margin: 0 }}><span className="badge neutral">No disponible en este navegador</span></p>
       ) : !loggedIn && !on ? (
-        <p className="small muted" style={{ margin: 0 }}>Entrá con tu cuenta primero: si Face ID falla, vas a poder desbloquear con el código por email.</p>
+        <p className="small muted" style={{ margin: 0 }}>Entrá con tu cuenta primero: si Face ID falla, vas a poder desbloquear con tu contraseña.</p>
       ) : (
         <label className="row between small" style={{ gap: 8 }}>
           <span><strong>{on ? 'Activado' : 'Desactivado'}</strong></span>

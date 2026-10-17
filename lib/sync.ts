@@ -304,9 +304,47 @@ export async function verifyLoginCode(email: string, token: string) {
   if (!sb) throw new Error('La nube no está configurada.')
   const { data, error } = await sb.auth.verifyOtp({ email: email.trim().toLowerCase(), token, type: 'email' })
   if (error) throw new Error(/expired|invalid/i.test(error.message) ? 'El código no es válido o venció. Pedí uno nuevo.' : error.message)
-  const user = data.user
-  if (!user) throw new Error('No se pudo iniciar sesión.')
-  if (await otherAccountOnDevice(user.id)) {
+  if (!data.user) throw new Error('No se pudo iniciar sesión.')
+  await finishSignIn(data.user.id)
+}
+
+export async function signInWithPassword(email: string, password: string) {
+  const sb = supabase()
+  if (!sb) throw new Error('La nube no está configurada.')
+  const { data, error } = await sb.auth.signInWithPassword({ email: email.trim().toLowerCase(), password })
+  if (error) {
+    if (/confirm/i.test(error.message)) throw new Error('Falta confirmar tu email: abrí el mail que te mandamos y tocá el enlace. Después volvé y entrá.')
+    throw new Error(/invalid/i.test(error.message) ? 'Email o contraseña incorrectos. Si todavía no creaste tu contraseña, usá "Crear cuenta".' : error.message)
+  }
+  await finishSignIn(data.user.id)
+}
+
+/** Alta con contraseña: solo para emails invitados. */
+export async function signUpWithPassword(email: string, password: string): Promise<'signed-in' | 'confirm-email'> {
+  const sb = supabase()
+  if (!sb) throw new Error('La nube no está configurada.')
+  const clean = email.trim().toLowerCase()
+  if (password.length < 8) throw new Error('La contraseña tiene que tener al menos 8 caracteres.')
+  const { data: allowed, error: e1 } = await sb.rpc('fit_can_sign_in', { p_email: clean })
+  if (e1) throw new Error('No pudimos verificar el acceso. Revisá la conexión.')
+  if (!allowed) throw new Error('Este email todavía no tiene acceso. Pedile una invitación al administrador.')
+  const { data, error } = await sb.auth.signUp({ email: clean, password })
+  if (error) throw new Error(/registered|exists/i.test(error.message) ? 'Ese email ya tiene cuenta: usá "Entrar".' : error.message)
+  if (!data.session || !data.user) return 'confirm-email'
+  await finishSignIn(data.user.id)
+  return 'signed-in'
+}
+
+export async function changePassword(password: string) {
+  if (password.length < 8) throw new Error('La contraseña tiene que tener al menos 8 caracteres.')
+  const { error } = await supabase()!.auth.updateUser({ password })
+  if (error) throw new Error(error.message)
+}
+
+/** Pasos comunes después de autenticarse: membresía, adoptar datos locales, sincronizar y perfil inicial. */
+async function finishSignIn(userId: string) {
+  const sb = supabase()!
+  if (await otherAccountOnDevice(userId)) {
     await sb.auth.signOut()
     throw new Error('Este teléfono tiene datos de otra cuenta. Cerrá esa sesión desde Mis datos antes de entrar con otra.')
   }
@@ -316,12 +354,13 @@ export async function verifyLoginCode(email: string, token: string) {
     throw new Error(m ? 'Tu acceso está pausado.' : 'Este email no tiene una invitación activa.')
   }
   await setMeta('membership', { role: m.role, status: m.status, plan: m.plan })
-  await adoptLocalData(user.id)
+  await adoptLocalData(userId)
   await requestSync()
   // Primera vez sin datos en la nube ni en el teléfono: crear el perfil con los datos de la invitación
   if ((await getDB().profiles.count()) === 0) {
     const { seedFor } = await import('./seed')
     await seedFor((m.profile ?? {}) as never)
+    await setMeta('seeded', true)
     await requestSync()
   }
 }
