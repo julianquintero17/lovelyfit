@@ -1,4 +1,4 @@
-import { getDB, insert, setMeta, update, uuid } from './db'
+import { currentOwnerId, getDB, insert, setMeta, update, uuid } from './db'
 import { CATALOG } from './catalog'
 import { DEFAULT_TZ } from './dates'
 import type { Exercise, Habit, MealTemplate, MuscleGroup, Plan, PlanDay, PlanItem, Profile, Reminder } from './types'
@@ -131,23 +131,41 @@ const LEGACY_NAMES: Record<string, string> = {
 export async function ensureCatalog(): Promise<number> {
   const db = getDB()
   if ((await db.profiles.count()) === 0) return 0
-  const all = await db.exercises.toArray()
-  const byKey = new Set(all.map((e) => e.catalogKey).filter(Boolean))
-  const byName = new Map(all.filter((e) => !e.catalogKey && !e.isCustom).map((e) => [e.name, e]))
-  let added = 0
-  for (const item of CATALOG) {
-    if (byKey.has(item.key)) continue
-    const legacy = byName.get(item.name) ?? [...byName.entries()].find(([n]) => LEGACY_NAMES[n] === item.key)?.[1]
-    if (legacy) {
-      await update<Exercise>('exercises', legacy.id, { catalogKey: item.key, name: item.name, equipment: item.kind })
-      byName.delete(legacy.name)
-      continue
+  const ownerId = await currentOwnerId()
+  // Transacción: dos ejecuciones simultáneas no pueden insertar lo mismo dos veces
+  return db.transaction('rw', db.exercises, db.meta, async () => {
+    const all = await db.exercises.toArray()
+    const byKey = new Set(all.map((e) => e.catalogKey).filter(Boolean))
+    const norm = (n: string) => n.normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase()
+    const legacy = all.filter((e) => !e.catalogKey && !e.isCustom)
+    let added = 0
+    for (const item of CATALOG) {
+      if (byKey.has(item.key)) continue
+      const match = legacy.find((e) => norm(e.name) === norm(item.name) || LEGACY_NAMES[e.name] === item.key)
+      if (match) {
+        await update<Exercise>('exercises', match.id, { catalogKey: item.key, name: item.name, equipment: item.kind })
+        legacy.splice(legacy.indexOf(match), 1)
+        continue
+      }
+      // Id determinístico por cuenta + clave: dos dispositivos convergen en la misma fila al sincronizar
+      await insert<Exercise>('exercises', {
+        id: stableId(`${ownerId}:${item.key}`),
+        name: item.name, group: item.group, equipment: item.kind, instructions: item.instructions,
+        incrementKg: item.incrementKg, photoId: null, isCustom: false, catalogKey: item.key,
+      })
+      added++
     }
-    await insert<Exercise>('exercises', {
-      name: item.name, group: item.group, equipment: item.kind, instructions: item.instructions,
-      incrementKg: item.incrementKg, photoId: null, isCustom: false, catalogKey: item.key,
-    })
-    added++
+    return added
+  })
+}
+
+/** UUID con formato v4 derivado de un texto (FNV-1a de 32 bits, 4 semillas). No criptográfico. */
+export function stableId(text: string): string {
+  const h = (seed: number) => {
+    let x = seed >>> 0
+    for (let i = 0; i < text.length; i++) x = Math.imul(x ^ text.charCodeAt(i), 16777619) >>> 0
+    return x.toString(16).padStart(8, '0')
   }
-  return added
+  const hex = h(2166136261) + h(0x9e3779b9) + h(0x85ebca6b) + h(0xc2b2ae35)
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }

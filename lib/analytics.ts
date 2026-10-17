@@ -5,6 +5,7 @@ import type { DailyMetric, Exercise, Measurement, MuscleGroup, Session, WorkSet 
 /** 1RM estimado (Epley). Solo con 1–12 repes; más allá la estimación no es confiable. */
 export function e1rm(weightKg: number | null, reps: number | null): number | null {
   if (!weightKg || !reps || reps < 1 || reps > 12) return null
+  if (reps === 1) return weightKg // una serie de 1 ya es la marca real
   return Math.round(weightKg * (1 + reps / 30) * 10) / 10
 }
 
@@ -51,13 +52,20 @@ export function personalRecords(ctx: Ctx, period?: Period): { best: PR[]; inPeri
       })
     }
   }
-  // Récord del período: la mejor marca lograda dentro del período supera la previa (la primera vez no cuenta)
+  // Récord del período: la mejor marca DENTRO del período supera la mejor previa (la primera vez no cuenta).
+  // Funciona también para semanas pasadas, aunque después haya habido marcas mayores.
   const inPeriod: PR[] = []
   if (period) {
-    for (const pr of best.values()) {
-      const base = before.get(pr.exerciseId)
-      if (base != null && pr.date >= period.from && pr.date <= period.to && pr.e1rm > base) {
-        inPeriod.push({ ...pr, improvement: Math.round((pr.e1rm - base) * 10) / 10 })
+    const top = new Map<string, (typeof rows)[number]>()
+    for (const r of rows) {
+      if (r.date < period.from || r.date > period.to) continue
+      const cur = top.get(r.set.exerciseId)
+      if (!cur || r.est > cur.est) top.set(r.set.exerciseId, r)
+    }
+    for (const [id, r] of top) {
+      const base = before.get(id)
+      if (base != null && r.est > base) {
+        inPeriod.push({ exerciseId: id, name: names.get(id) ?? 'Ejercicio', date: r.date, weightKg: r.set.weightKg!, reps: r.set.reps!, e1rm: r.est, improvement: Math.round((r.est - base) * 10) / 10 })
       }
     }
   }
@@ -89,8 +97,12 @@ export function weeklyConsistency(sessions: Session[], today: DayKey, weeks = 8)
 }
 
 /** Tendencia de peso en kg por semana (regresión lineal). Necesita ≥2 pesajes separados ≥7 días. */
-export function weightTrend(measurements: Measurement[]): { kgPerWeek: number; points: number; spanDays: number } | null {
-  const pts = series(measurements, 'weight')
+export function weightTrend(measurements: Measurement[], windowDays = 56): { kgPerWeek: number; points: number; spanDays: number } | null {
+  const all = series(measurements, 'weight')
+  if (!all.length) return null
+  // Solo lo reciente (8 semanas por defecto): un promedio de toda la historia confunde
+  const last = all[all.length - 1].date
+  const pts = all.filter((p) => daysBetween(p.date, last) <= windowDays)
   if (pts.length < 2) return null
   const span = daysBetween(pts[0].date, pts[pts.length - 1].date)
   if (span < 7) return null
@@ -104,11 +116,13 @@ export function weightTrend(measurements: Measurement[]): { kgPerWeek: number; p
 }
 
 /** Promedio de pasos en días con entrenamiento vs. días sin, dentro del período (solo días con dato). */
-export function stepsTrainingVsRest(sessions: Session[], metrics: DailyMetric[], period: Period) {
+export function stepsTrainingVsRest(sessions: Session[], metrics: DailyMetric[], period: Period, today?: DayKey) {
   const trained = new Set(doneSessions(sessions).map((s) => s.date))
   const a: number[] = []
   const b: number[] = []
-  for (let d = period.from; d <= period.to; d = addDays(d, 1)) {
+  // El día en curso tiene pasos parciales: no se compara
+  const to = today && period.to >= today ? addDays(today, -1) : period.to
+  for (let d = period.from; d <= to; d = addDays(d, 1)) {
     const v = dailyValue(metrics, 'steps', d)
     if (v == null) continue
     ;(trained.has(d) ? a : b).push(v)
@@ -126,10 +140,17 @@ export function insights(input: {
   steps: ReturnType<typeof stepsTrainingVsRest>
 }): string[] {
   const out: string[] = []
-  const past = input.consistency.slice(0, -1) // la semana en curso todavía no terminó
+  // Semanas cerradas desde la primera con entrenamiento (antes de empezar a usar la app no cuentan)
+  const closed = input.consistency.slice(0, -1)
+  const first = closed.findIndex((w) => w.count > 0)
+  const past = first >= 0 ? closed.slice(first) : []
   const met = past.filter((w) => w.count >= input.goal).length
   const active = past.filter((w) => w.count > 0).length
-  if (active > 0) out.push(`En las últimas ${past.length} semanas entrenaste en ${active} y cumpliste la meta en ${met}.`)
+  if (active > 0) {
+    out.push(past.length === 1
+      ? `La semana pasada entrenaste${met ? ' y cumpliste la meta' : ''}.`
+      : `En las últimas ${past.length} semanas entrenaste en ${active}${met ? ` y cumpliste la meta en ${met}` : ''}.`)
+  }
   if (input.prs.length) {
     const top = [...input.prs].sort((a, b) => (b.improvement ?? 0) - (a.improvement ?? 0))[0]
     out.push(`${input.prs.length} récord${input.prs.length > 1 ? 's' : ''} en este período. El mayor salto: ${top.name} (+${String(top.improvement ?? 0).replace('.', ',')} kg de 1RM estimado).`)

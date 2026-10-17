@@ -136,7 +136,7 @@ h3 { font-size: 18px; }
 .btn.quiet { background: var(--offwhite); color: var(--ink); border-color: var(--stone); }
 .btn.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
 .btn.block { width: 100%; }
-.btn.sm { min-height: 40px; font-size: 16px; padding: 0 14px; }
+.btn.sm { min-height: 44px; font-size: 16px; padding: 0 14px; }
 .btn.light { background: var(--cream); color: var(--deep); border-color: var(--cream); }
 .iconbtn {
   width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
@@ -157,7 +157,7 @@ textarea.input { min-height: 84px; resize: vertical; }
 
 .seg { display: flex; background: var(--offwhite); border: var(--line); border-radius: 999px; padding: 4px; gap: 4px; }
 .seg button {
-  flex: 1; min-height: 40px; border-radius: 999px; border: 0; background: transparent; cursor: pointer;
+  flex: 1; min-height: 44px; border-radius: 999px; border: 0; background: transparent; cursor: pointer;
   font-weight: 600; font-size: 15px; color: var(--ink-2);
 }
 .seg button[aria-pressed='true'] { background: var(--lab); color: var(--cream); }
@@ -285,3 +285,6 @@ a.badge { min-height: 44px; }
 .mode { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--r); border: var(--line); background: var(--surface); text-align: left; cursor: pointer; min-height: 110px; }
 .mode.primary { background: var(--lab); border-color: var(--lab); color: var(--cream); }
 .mode .title { font-size: 22px; }
+
+.iconbtn:disabled { opacity: .35; cursor: default; }
+.extile .tiny { font-size: 13px; }

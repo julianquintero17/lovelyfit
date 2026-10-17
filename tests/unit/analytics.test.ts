@@ -13,7 +13,7 @@ const set = (s: Session, exerciseId: string, w: number | null, r: number | null,
 describe('análisis', () => {
   it('1RM estimado solo con rangos razonables', () => {
     expect(e1rm(100, 10)).toBeCloseTo(133.3, 1)
-    expect(e1rm(100, 1)).toBeCloseTo(103.3, 1)
+    expect(e1rm(100, 1)).toBe(100) // una serie de 1 es la marca real
     expect(e1rm(100, 20)).toBeNull()
     expect(e1rm(null, 8)).toBeNull()
   })
@@ -25,6 +25,11 @@ describe('análisis', () => {
     expect(r.best[0].weightKg).toBe(75) // la descartada y la aproximación no cuentan
     expect(r.inPeriod).toHaveLength(1)
     expect(r.inPeriod[0].improvement).toBeCloseTo(6.7, 1)
+    // Semana pasada: su récord se ve aunque después haya otro mayor
+    const s4 = ses('2026-10-20')
+    const later = personalRecords({ sessions: [s1, s2, s4], sets: [...sets, set(s4, 'bench', 90, 10)], exercises }, weekPeriod('2026-10-13'))
+    expect(later.inPeriod).toHaveLength(1)
+    expect(later.inPeriod[0].weightKg).toBe(75)
     const first = personalRecords({ sessions: [s1], sets: [sets[0]], exercises }, weekPeriod('2026-10-05'))
     expect(first.inPeriod).toHaveLength(0)
   })
@@ -51,7 +56,8 @@ describe('análisis', () => {
     const st = stepsTrainingVsRest([ses('2026-10-12'), ses('2026-10-14')], [d('2026-10-12', 9000), d('2026-10-14', 11000), d('2026-10-13', 4000), d('2026-10-15', 6000)], weekPeriod('2026-10-12'))
     expect(st).toEqual({ training: 10000, rest: 5000, trainingDays: 2, restDays: 2 })
     const text = insights({ consistency: weeklyConsistency([ses('2026-10-06')], '2026-10-17'), goal: 4, prs: [], trend: null, steps: st }).join(' ')
-    expect(text).toMatch(/entrenaste en 1/)
+    expect(text).toMatch(/La semana pasada entrenaste/)
+    expect(text).not.toMatch(/últimas 7 semanas/) // semanas antes de empezar no cuentan
     expect(text).not.toMatch(/fallaste|deberías|mal/i)
   })
 })

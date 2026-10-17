@@ -256,7 +256,7 @@ function Analysis(props: {
   const prs = personalRecords(ctx, period)
   const groups = setsByGroup(ctx, period)
   const trend = weightTrend(props.measurements)
-  const steps = stepsTrainingVsRest(props.sessions, props.metrics, period)
+  const steps = stepsTrainingVsRest(props.sessions, props.metrics, period, today)
   const notes = insights({ consistency, goal, prs: prs.inPeriod, trend, steps })
   const maxWeek = Math.max(goal, ...consistency.map((w) => w.count))
   const maxGroup = Math.max(1, ...groups.map((g) => g.sets))

@@ -65,7 +65,16 @@ function SessionView() {
     setPicker(null)
     const order = (ses!.at(-1)?.order ?? -1) + 1
     const cardio = e.group === 'cardio'
-    await persist(() => addExerciseToSession(id, e.id, { order, sets: cardio ? 0 : 3, repMin: 8, repMax: 12, restSec: 90, minutes: cardio ? 10 : null }), 'Ejercicio agregado')
+    await persist(async () => {
+      // Repetir la estructura de la última vez (series, rango, descanso); si no hay, 3 × 8–12
+      const last = (await getDB().sessionExercises.where('exerciseId').equals(e.id).toArray())
+        .filter((x) => !x.deletedAt && x.sessionId !== id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+      const lastSets = last ? (await getDB().sets.where('sessionExerciseId').equals(last.id).toArray()).filter((x) => !x.deletedAt && x.kind === 'work').length : 0
+      return addExerciseToSession(id, e.id, {
+        order, sets: cardio ? 0 : Math.max(1, lastSets || 3), repMin: last?.repMin || 8, repMax: last?.repMax || 12,
+        restSec: last?.restSec || 90, minutes: cardio ? last?.minutes ?? 10 : null,
+      }, session!.startedAt)
+    }, 'Ejercicio agregado')
   }
 
   async function swap(se: SessionExercise, e: Exercise) {
@@ -74,7 +83,7 @@ function SessionView() {
       const db = getDB()
       await db.transaction('rw', db.tables, async () => {
         await update<SessionExercise>('sessionExercises', se.id, { exerciseId: e.id, substitutedFromId: se.substitutedFromId ?? se.exerciseId })
-        const prev = await lastPerformance(e.id, id)
+        const prev = await lastPerformance(e.id, id, session!.startedAt)
         const mine = sets!.filter((s) => s.sessionExerciseId === se.id).sort((a, b) => a.order - b.order)
         for (const s of mine) {
           const p = prev?.sets[s.order] ?? prev?.sets.at(-1)
@@ -128,6 +137,7 @@ function SessionView() {
           neighbors={[ses[i - 1], ses[i + 1]]}
           onRest={(sec) => setRest(sec)}
           live={live}
+          startedAt={session.startedAt}
           onSwap={() => setPicker({ mode: 'swap', se })}
         />
       ))}
@@ -210,6 +220,7 @@ function ExerciseCard(props: {
   neighbors: [SessionExercise | undefined, SessionExercise | undefined]
   onRest: (sec: number) => void
   live: boolean
+  startedAt: string
   onSwap: () => void
 }) {
   const { se, ex, sets, sessionId } = props
@@ -218,7 +229,7 @@ function ExerciseCard(props: {
   const [info, setInfo] = useState(false)
   useEffect(() => {
     let alive = true
-    recentPerformances(se.exerciseId, sessionId, 2).then((p) => alive && setPerfs(p))
+    recentPerformances(se.exerciseId, sessionId, 2, props.startedAt).then((p) => alive && setPerfs(p))
     return () => { alive = false }
   }, [se.exerciseId, sessionId])
 
@@ -265,7 +276,7 @@ function ExerciseCard(props: {
         <div className="grow" style={{ minWidth: 0 }}>
           <h3 style={{ fontSize: 21 }}>{ex?.name ?? 'Ejercicio'}</h3>
           <p className="small muted" style={{ margin: '2px 0 0' }}>
-            {isCardio ? `${se.minutes} min cómodos` : `${sets.length} × ${se.repMin}–${se.repMax} · descanso ${se.restSec}s · ~3 en reserva`}
+            {isCardio ? `${se.minutes} min cómodos` : `${workSets.length} × ${se.repMin}–${se.repMax} · descanso ${se.restSec}s · ~3 en reserva`}
             {props.from && <> · <span className="accent">en lugar de {props.from.name}</span></>}
             {skipped && <> · <strong>omitido</strong></>}
           </p>
@@ -295,7 +306,7 @@ function ExerciseCard(props: {
             const prevSet = wi >= 0 ? prev?.sets[wi] : undefined
             return (
               <SetRow key={s.id} s={s} label={s.kind === 'warmup' ? 'A' : String(wi + 1)} prevSet={prevSet}
-                repHint={s.kind === 'warmup' ? null : prevSet?.reps ?? se.repMin} onToggle={toggleSet} active={s.id === activeSet?.id} />
+                repHint={s.kind === 'warmup' ? se.repMin : prevSet?.reps ?? se.repMin} onToggle={toggleSet} active={s.id === activeSet?.id} />
             )
           })}
           {activeSet && (
@@ -433,10 +444,10 @@ function SetStepper({ set, increment, before, fallback, repHint }: { set: WorkSe
             Igual que {before ? 'la anterior' : 'la vez pasada'} ({fmtKg(src.weightKg)}×{src.reps ?? '—'})
           </button>
         )}
-        <div className="row" style={{ gap: 4 }} role="group" aria-label="Repeticiones en reserva">
+        <div className="row" style={{ gap: 6 }} role="group" aria-label="Repeticiones en reserva">
           <span className="tiny muted">RIR</span>
           {[0, 1, 2, 3].map((n) => (
-            <button key={n} className="chip" style={{ minWidth: 40, justifyContent: 'center', padding: 0 }} aria-pressed={set.rir === n}
+            <button key={n} className="chip" style={{ minWidth: 44, justifyContent: 'center', padding: 0 }} aria-pressed={set.rir === n}
               onClick={() => save({ rir: set.rir === n ? null : n })}>{n === 3 ? '3+' : n}</button>
           ))}
         </div>
@@ -520,7 +531,8 @@ function useRestTimer(sessionId: string): [number | null, (sec: number | null, a
     } catch { /* sin storage: sin persistencia del descanso */ }
   }, [key])
   const set = (sec: number | null, add = false) => {
-    const v = sec == null ? null : add && endsAt ? endsAt + sec * 1000 : Date.now() + sec * 1000
+    const base = add && endsAt && endsAt > Date.now() ? endsAt : Date.now()
+    const v = sec == null ? null : base + sec * 1000
     setEndsAt(v)
     try {
       if (v) sessionStorage.setItem(key, String(v))

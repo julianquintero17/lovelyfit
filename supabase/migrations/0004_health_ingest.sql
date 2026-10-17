@@ -42,7 +42,7 @@ create or replace function public.fit_ingest_health(
 language plpgsql volatile security definer set search_path = '' as $$
 declare
   v_uid uuid; v_kind text; v_val numeric; v_max numeric; v_key text; v_n int := 0;
-  v_w jsonb; v_start timestamptz; v_ext text; v_type text; v_acts int := 0;
+  v_w jsonb; v_start timestamptz; v_ext text; v_type text; v_acts int := 0; v_raw text;
 begin
   select t.user_id into v_uid from public.fit_ingest_tokens t
    where t.token_hash = encode(sha256(convert_to(coalesce(p_token, ''), 'UTF8')), 'hex');
@@ -71,8 +71,11 @@ begin
   end loop;
 
   for v_w in select * from jsonb_array_elements(coalesce(p_workouts, '[]'::jsonb)) limit 20 loop
-    v_start := nullif(v_w ->> 'start', '')::timestamptz;
-    continue when v_start is null;
+    v_raw := nullif(trim(v_w ->> 'start'), '');
+    continue when v_raw is null;
+    -- Sin zona horaria explícita (lo habitual en Atajos): hora de Buenos Aires
+    v_start := case when v_raw ~ '(Z|[+-]\d\d:?\d\d)$' then v_raw::timestamptz
+                    else v_raw::timestamp at time zone 'America/Argentina/Buenos_Aires' end;
     v_type := (case lower(coalesce(v_w ->> 'type', ''))
       when 'walking' then 'caminata' when 'caminata' then 'caminata' when 'hiking' then 'caminata'
       when 'running' then 'carrera' when 'carrera' then 'carrera'
@@ -82,9 +85,10 @@ begin
     if not exists (select 1 from public.fit_activities where owner_id = v_uid and source = 'shortcut' and external_id = v_ext and deleted_at is null) then
       insert into public.fit_activities (id, owner_id, created_at, updated_at, date, type, started_at, duration_min, distance_km, avg_hr, source, external_id, route, notes)
       values (gen_random_uuid(), v_uid, now(), now(), (v_start at time zone 'America/Argentina/Buenos_Aires')::date, v_type, v_start,
-              least(greatest(nullif(v_w ->> 'minutes', '')::numeric, 0), 1440),
-              least(greatest(nullif(v_w ->> 'km', '')::numeric, 0), 500),
-              nullif(v_w ->> 'avg_hr', '')::int, 'shortcut', v_ext, null, coalesce(v_w ->> 'type', ''));
+              case when v_w ->> 'minutes' ~ '^\d+([.,]\d+)?$' then least(replace(v_w ->> 'minutes', ',', '.')::numeric, 1440) end,
+              case when v_w ->> 'km' ~ '^\d+([.,]\d+)?$' then least(replace(v_w ->> 'km', ',', '.')::numeric, 500) end,
+              case when v_w ->> 'avg_hr' ~ '^\d+([.,]\d+)?$' then least(round(replace(v_w ->> 'avg_hr', ',', '.')::numeric), 250)::int end,
+              'shortcut', v_ext, null, coalesce(v_w ->> 'type', ''));
       v_acts := v_acts + 1;
     end if;
   end loop;

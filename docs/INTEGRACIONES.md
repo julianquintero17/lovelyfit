@@ -15,7 +15,9 @@ Camino: reloj DM58 → GloryFitPro → Apple Salud → Atajo diario → Supabase
   El token **solo permite escribir** métricas del día y entrenamientos del dueño; no permite leer nada.
 - El Atajo usa *Obtener contenido de URL* (POST JSON) — no abre Safari, así que no importa que Safari y la
   app instalada tengan almacenamiento separado.
-- Reenviar el mismo día actualiza el valor (no duplica). Los entrenamientos se deduplican por hora de inicio y tipo.
+- Reenviar el mismo día actualiza el valor (no duplica). La guía actual envía métricas diarias (pasos, energía,
+  minutos de ejercicio, FC en reposo). La función ya acepta entrenamientos (`p_workouts`, deduplicados por
+  hora de inicio y tipo), pero armarlos en Atajos queda como mejora futura.
 - Límites conocidos: con el iPhone bloqueado Salud puede negar los datos (programar a una hora de uso);
   Atajos no expone rutas GPS; GloryFitPro declara HealthKit pero qué tipos escribe hay que verificarlo en Salud.
 - Fuentes de la investigación: listing de GloryFitPro en App Store (HealthKit), Gadgetbridge (DM58 sin

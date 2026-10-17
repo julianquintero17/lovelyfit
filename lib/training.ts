@@ -32,7 +32,7 @@ export async function startSession(day: PlanDay | null, tz?: string, past?: Past
     for (const it of day?.items ?? []) {
       await addExerciseToSession(session.id, it.exerciseId, {
         order: order++, sets: it.sets, repMin: it.repMin, repMax: it.repMax, restSec: it.restSec, minutes: it.minutes,
-      })
+      }, session.startedAt)
     }
     return session
   })
@@ -42,13 +42,14 @@ export async function addExerciseToSession(
   sessionId: string,
   exerciseId: string,
   opts: { order: number; sets: number; repMin: number; repMax: number; restSec: number; minutes: number | null; substitutedFromId?: string | null },
+  before?: string,
 ): Promise<SessionExercise> {
   const se = await insert<SessionExercise>('sessionExercises', {
     sessionId, exerciseId, order: opts.order, status: 'pending', substitutedFromId: opts.substitutedFromId ?? null,
     repMin: opts.repMin, repMax: opts.repMax, restSec: opts.restSec, minutes: opts.minutes, feel: null, note: '',
   })
   if (opts.minutes == null) {
-    const prev = await lastPerformance(exerciseId, sessionId)
+    const prev = await lastPerformance(exerciseId, sessionId, before)
     for (let i = 0; i < opts.sets; i++) {
       const p = prev?.sets[i] ?? prev?.sets[prev.sets.length - 1]
       await insert<WorkSet>('sets', {
@@ -67,7 +68,8 @@ export interface Performance {
 }
 
 /** Últimas N sesiones terminadas donde se hizo el ejercicio (series de trabajo completadas). */
-export async function recentPerformances(exerciseId: string, excludeSessionId?: string, limit = 3): Promise<Performance[]> {
+/** `before` (ISO): solo sesiones que empezaron antes; clave al cargar sesiones pasadas. */
+export async function recentPerformances(exerciseId: string, excludeSessionId?: string, limit = 3, before?: string): Promise<Performance[]> {
   const db = getDB()
   const sets = (await db.sets.where('exerciseId').equals(exerciseId).toArray()).filter(
     (s) => !s.deletedAt && s.done && s.kind === 'work' && s.sessionId !== excludeSessionId,
@@ -75,7 +77,7 @@ export async function recentPerformances(exerciseId: string, excludeSessionId?: 
   const bySession = new Map<string, WorkSet[]>()
   for (const s of sets) bySession.set(s.sessionId, [...(bySession.get(s.sessionId) ?? []), s])
   const sessions = (await db.sessions.bulkGet([...bySession.keys()])).filter(
-    (s): s is Session => !!s && !s.deletedAt && s.status !== 'discarded',
+    (s): s is Session => !!s && !s.deletedAt && s.status !== 'discarded' && (!before || s.startedAt < before),
   )
   sessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt))
   const out: Performance[] = []
@@ -88,8 +90,8 @@ export async function recentPerformances(exerciseId: string, excludeSessionId?: 
   return out
 }
 
-export async function lastPerformance(exerciseId: string, excludeSessionId?: string) {
-  return (await recentPerformances(exerciseId, excludeSessionId, 1))[0]
+export async function lastPerformance(exerciseId: string, excludeSessionId?: string, before?: string) {
+  return (await recentPerformances(exerciseId, excludeSessionId, 1, before))[0]
 }
 
 /**

@@ -24,6 +24,9 @@ Datos separados por usuario desde el inicio.
 | Sincronización Supabase (cola persistente, upsert idempotente, LWW, fotos en bucket privado) | 🟡 Migración aplicada, RLS verificado. Falta prueba con cuenta real. |
 | Acceso por invitación (admin / miembro), pantalla Equipo y accesos, campo `plan` para suscripción futura | ✅ Hecho. Datos solo con membresía activa (RLS). |
 | Bloqueo con Face ID (passkey local, WebAuthn) | 🟡 Hecho, pendiente de prueba en iPhone. Es bloqueo de pantalla, no cifrado. |
+| Catálogo de 70 ejercicios (poleas, máquinas, libres), modo libre con grilla, registro rápido (+/−, repetir serie, RIR, aproximación), cargar sesión pasada | ✅ Hecho (sprint 2). |
+| Salud → Lovely Fit vía Atajo diario con token de solo escritura | 🟡 Hecho, pendiente de armar el Atajo y probar en iPhone. |
+| Análisis: récords/1RM estimado, series por grupo, constancia 8 semanas, tendencia de peso, pasos entreno vs descanso | ✅ Hecho (sprint 2). |
 | Recordatorios | 🟡 Configurables y guardados; **no se envían** (requiere push desde servidor, a verificar gratis). |
 | Strava, adidas, n8n, app nativa | ⛔ Fuera del MVP. |
 

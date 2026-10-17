@@ -44,7 +44,7 @@ export function HealthConnect() {
   const copy = (text: string, what: string) =>
     navigator.clipboard?.writeText(text).then(() => showToast(`${what} copiado`), () => showToast('No se pudo copiar', true))
 
-  const body = `{"p_token":"${token ?? 'TU_TOKEN'}","p_day":"(Fecha de ayer)","p_steps":(Pasos),"p_active_kcal":(Energía activa),"p_resting_hr":(FC en reposo),"p_workouts":[]}`
+  const fields = 'p_token (Texto), p_day (Texto), p_steps, p_active_kcal, p_exercise_min, p_resting_hr (Número)'
 
   return (
     <div className="stack" style={{ gap: 10 }}>
@@ -71,17 +71,15 @@ export function HealthConnect() {
         <summary className="small" style={{ cursor: 'pointer', fontWeight: 600, minHeight: 44, display: 'flex', alignItems: 'center' }}>Cómo armar el Atajo (una sola vez, ~10 min)</summary>
         <ol className="small" style={{ paddingLeft: 18, display: 'grid', gap: 6 }}>
           <li>Primero mirá en Salud → Explorar qué datos manda GloryFitPro (pasos, frecuencia cardíaca, entrenamientos).</li>
-          <li>En Atajos creá uno nuevo: <em>Fecha actual</em> → <em>Ajustar fecha</em> (restar 1 día) → <em>Formatear fecha</em> con formato personalizado <code>yyyy-MM-dd</code>.</li>
-          <li><em>Buscar muestras de Salud</em>: Pasos, fecha «es ayer» → <em>Calcular estadísticas</em>: Suma.</li>
-          <li>Repetí para <em>Energía activa</em> (Suma) y <em>Frecuencia cardíaca en reposo</em> (Promedio). Si alguna no existe, salteala.</li>
+          <li>En Atajos creá uno nuevo: <em>Fecha actual</em> → <em>Ajustar fecha</em> (restar 1 día) → <em>Formatear fecha</em> → formato personalizado <code>yyyy-MM-dd</code>.</li>
+          <li><em>Buscar muestras de Salud</em>: Pasos, fecha «es ayer» → <em>Calcular estadísticas</em>: Suma → <em>Redondear número</em>.</li>
+          <li>Repetí para <em>Energía activa</em> (Suma), <em>Minutos de ejercicio</em> (Suma) y <em>Frecuencia cardíaca en reposo</em> (Promedio), cada uno con <em>Redondear</em>. Si alguno no existe en tu Salud, salteá ese paso.</li>
           <li><em>Obtener contenido de URL</em>: URL <button className="linkbtn tiny" onClick={() => copy(ENDPOINT, 'URL')}>copiar URL</button>, método <strong>POST</strong>.</li>
-          <li>Encabezados: <code>apikey</code> = <button className="linkbtn tiny" onClick={() => copy(KEY, 'Clave pública')}>copiar clave pública</button> y <code>Content-Type</code> = <code>application/json</code>.</li>
-          <li>Cuerpo JSON con estos campos (reemplazá lo que está entre paréntesis por las variables de los pasos anteriores):
-            <code className="tiny" style={{ display: 'block', wordBreak: 'break-all', marginTop: 4 }}>{body}</code>
-          </li>
+          <li>Encabezados: <code>apikey</code> = <button className="linkbtn tiny" onClick={() => copy(KEY, 'Clave pública')}>copiar clave pública</button>.</li>
+          <li>Cuerpo de la solicitud: <strong>JSON</strong>. Agregá un campo por dato: {fields}. En los números elegí el tipo <strong>Número</strong> y la variable redondeada; <code>p_token</code> es el token de arriba y <code>p_day</code> la fecha formateada. Si un dato no existe, no agregues ese campo.</li>
           <li>En Automatización → Hora del día (ej. 7:30, cuando solés usar el teléfono) → este atajo → <strong>Ejecutar inmediatamente</strong>.</li>
         </ol>
-        <p className="tiny muted">Con el iPhone bloqueado, Salud puede negar los datos y el envío falla; por eso conviene una hora en la que lo estés usando. Reenviar el mismo día actualiza, no duplica. Las rutas GPS no están disponibles por esta vía.</p>
+        <p className="tiny muted">Con el iPhone bloqueado, Salud puede negar los datos y el envío falla; por eso conviene una hora en la que lo estés usando. Reenviar el mismo día actualiza, no duplica. Por ahora la guía envía métricas diarias; los entrenamientos y las rutas GPS no se envían por esta vía.</p>
       </details>
     </div>
   )
