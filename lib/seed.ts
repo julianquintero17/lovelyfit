@@ -65,38 +65,35 @@ const item = (exerciseId: string, sets: number, repMin: number, repMax: number, 
   key: uuid(), exerciseId, sets, repMin, repMax, restSec, targetRir: minutes ? null : 3, minutes, note: '',
 })
 
-export interface SeedInput {
-  displayName: string
-  heightCm: number | null
-  declaredWeightKg: number | null
-  goalWeightKg: number | null
-  weeklySessionGoal: number
-}
+type ProfileFields = Omit<Profile, keyof import('./types').Base>
 
-// Los datos personales los carga cada usuario en el onboarding: nada personal vive en el código.
-export async function seedFor(input: Partial<SeedInput> = {}): Promise<void> {
-  const { displayName = 'Yo', heightCm = null, declaredWeightKg = null, goalWeightKg = null, weeklySessionGoal = 4 } = input
+// Los datos personales llegan del onboarding o de la invitación: nada personal vive en el código.
+export async function seedFor(input: Partial<ProfileFields> = {}): Promise<void> {
   const db = getDB()
   await db.transaction('rw', db.tables, async () => {
-    await insert<Profile>('profiles', {
-      displayName,
+    const defaults: ProfileFields = {
+      displayName: 'Yo',
       ageDeclared: null,
       ageDeclaredOn: null,
-      heightCm,
-      declaredWeightKg,
-      declaredWeightNote: declaredWeightKg != null ? 'Aproximado, declarado sin fecha de medición.' : '',
-      goalWeightKg,
-      weeklySessionGoal,
+      heightCm: null,
+      declaredWeightKg: null,
+      declaredWeightNote: '',
+      goalWeightKg: null,
+      weeklySessionGoal: 4,
       weighInEveryDays: 14,
       trainingWeekdays: [1, 2, 4, 6],
       preferredTrainingTime: '07:00',
       fallbackTrainingTime: '17:30',
-      workStart: '08:30',
-      workEnd: '17:45',
+      workStart: '09:00',
+      workEnd: '18:00',
       timezone: DEFAULT_TZ,
       healthNotes: '',
       weekdayStepGoal: null,
-    })
+    }
+    const known = Object.fromEntries(Object.entries(input).filter(([k, v]) => k in defaults && v !== undefined))
+    const profile = { ...defaults, ...known } as ProfileFields
+    if (profile.declaredWeightKg != null && !profile.declaredWeightNote) profile.declaredWeightNote = 'Aproximado, declarado sin fecha de medición.'
+    await insert<Profile>('profiles', profile)
 
     const ex: Record<string, string> = {}
     for (const e of EXERCISE_SEED) {

@@ -22,6 +22,8 @@ Datos separados por usuario desde el inicio.
 | Offline (abrir y registrar sin conexión tras la primera carga) | ✅ Probado (E2E, Chromium). Pendiente prueba en iPhone. |
 | Respaldo JSON (con/sin fotos), importar sin duplicar | ✅ Hecho. |
 | Sincronización Supabase (cola persistente, upsert idempotente, LWW, fotos en bucket privado) | 🟡 Migración aplicada, RLS verificado. Falta prueba con cuenta real. |
+| Acceso por invitación (admin / miembro), pantalla Equipo y accesos, campo `plan` para suscripción futura | ✅ Hecho. Datos solo con membresía activa (RLS). |
+| Bloqueo con Face ID (passkey local, WebAuthn) | 🟡 Hecho, pendiente de prueba en iPhone. Es bloqueo de pantalla, no cifrado. |
 | Recordatorios | 🟡 Configurables y guardados; **no se envían** (requiere push desde servidor, a verificar gratis). |
 | Strava, adidas, n8n, app nativa | ⛔ Fuera del MVP. |
 
@@ -34,6 +36,15 @@ Datos separados por usuario desde el inicio.
 - **Tablas `fit_*`** para poder convivir en un proyecto Supabase existente sin chocar (ej. `profiles`).
 - **Imágenes de ejercicios**: solo fotos propias; sin imágenes de terceros sin licencia.
 - **Ícono provisorio** "LF": no es un logo aprobado de Lovely Fit.
+
+## Revisión del equipo (20 roles en 10 agentes)
+Se revisó la app contra los requisitos. De 55 hallazgos se corrigieron los de impacto real, entre ellos:
+datos de una cuenta que podían pasar a otra en el mismo teléfono, restaurar respaldos con fotos en Safari,
+sincronización que se cortaba ante el primer error, conflictos descartados en silencio, fotos borradas que
+quedaban en la nube, aviso de fin de descanso en iPhone (beep), app que tardaba en abrir con señal débil,
+estados de sincronización engañosos, tamaños táctiles, sesiones vacías que contaban para la meta y
+comparaciones de semanas incompletas. Quedan anotados como menores: confirmaciones nativas del navegador,
+foto de comida huérfana si se cancela el registro y zona horaria fija en algunos formularios.
 
 ## Infraestructura
 - Supabase: tablas `fit_*` en un proyecto compartido, aisladas por RLS; no comparten tablas con otros sistemas.

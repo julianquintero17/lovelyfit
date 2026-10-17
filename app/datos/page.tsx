@@ -7,7 +7,10 @@ import { exportBackup, importBackup, wipeLocal } from '@/lib/backup'
 import { useProfile, useRows, useSyncStatus } from '@/lib/hooks'
 import { requestPersistence, storageEstimate } from '@/lib/photos'
 import { isCloudConfigured } from '@/lib/supabase'
-import { requestSync, signOut } from '@/lib/sync'
+import { countPending, requestSync, signOut } from '@/lib/sync'
+import { disableLock, enableLock, getLock, lockSupported } from '@/lib/applock'
+import { dayKey } from '@/lib/dates'
+import Link from 'next/link'
 import type { Profile, Reminder } from '@/lib/types'
 import { Login } from '@/components/Login'
 import { parseNum, persist, showToast } from '@/components/ui'
@@ -20,6 +23,7 @@ export default function MyDataPage() {
       <h1>Mis datos</h1>
       {profile && <ProfileCard profile={profile} />}
       <AccountCard />
+      <SecurityCard />
       <BackupCard />
       <RemindersCard />
       <IntegrationsCard />
@@ -101,40 +105,94 @@ function ProfileCard({ profile }: { profile: Profile }) {
 function AccountCard() {
   const s = useSyncStatus()
   const cloud = isCloudConfigured()
+  const label: Record<string, string> = { idle: 'sincronizado', syncing: 'sincronizando', offline: 'sin conexión', error: 'con datos sin subir', 'local-only': 'local', 'signed-out': 'sin cuenta', 'no-access': 'acceso pausado' }
+  async function logout() {
+    if (!confirm('Al cerrar sesión se borran los datos de este teléfono (quedan guardados en tu cuenta). ¿Seguimos?')) return
+    try {
+      await signOut()
+      location.href = '/'
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (confirm(`${msg}\n\n¿Cerrar sesión igual y perder esos cambios?`)) {
+        await signOut(true)
+        location.href = '/'
+      }
+    }
+  }
   return (
     <section className="card stack" id="cuenta">
       <h2>Cuenta y sincronización</h2>
       {!cloud ? (
-        <>
-          <p className="small" style={{ margin: 0 }}>
-            <span className="badge neutral">Nube no configurada</span>
-          </p>
-          <p className="small muted" style={{ margin: 0 }}>
-            Todo se guarda en este teléfono y funciona sin conexión. Para respaldo en la nube y usar otro dispositivo,
-            hay que conectar Supabase (ver docs/INSTALACION.md). Mientras tanto, exportá respaldos seguido.
-          </p>
-          {s.pending > 0 && <p className="tiny muted" style={{ margin: 0 }}>{s.pending} cambios quedarán listos para subir cuando se conecte la nube.</p>}
-        </>
+        <p className="small muted" style={{ margin: 0 }}>Todo se guarda en este teléfono. Exportá respaldos seguido.</p>
       ) : s.state === 'signed-out' ? (
         <>
-          <p className="small muted" style={{ margin: 0 }}>Entrá para respaldar tus datos en tu cuenta privada. Los datos de este teléfono se suben al entrar.</p>
+          <p className="small muted" style={{ margin: 0 }}>
+            El acceso es por invitación. Entrá con tu email para respaldar tus datos en tu cuenta privada; lo que ya cargaste en este teléfono se sube al entrar.
+          </p>
           <Login />
         </>
       ) : (
         <>
-          <p className="small" style={{ margin: 0 }}>Cuenta: <strong>{s.email}</strong></p>
           <p className="small" style={{ margin: 0 }}>
-            Estado: <strong>{({ idle: 'sincronizado', syncing: 'sincronizando', offline: 'sin conexión', error: 'error', 'local-only': 'local', 'signed-out': 'sin cuenta' } as const)[s.state]}</strong>
-            {' · '}{s.pending} pendientes
-            {s.lastSyncAt && <> · última {new Date(s.lastSyncAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</>}
+            <strong>{s.email}</strong>
+            {s.membership && <span className="muted"> · {s.membership.role === 'admin' ? 'administrador' : 'miembro'}</span>}
+          </p>
+          <p className="small" style={{ margin: 0 }} data-testid="account-state">
+            Estado: <strong>{label[s.state]}</strong>
+            {s.pending > 0 && <> · {s.pending} cambios por subir</>}
+            {s.lastSyncAt && <> · última sincronización {new Date(s.lastSyncAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</>}
           </p>
           {s.error && <p className="small danger" role="alert" style={{ margin: 0 }}>{s.error}</p>}
-          <p className="tiny muted" style={{ margin: 0 }}>Se sincroniza con la app abierta y conexión. iOS no permite hacerlo en segundo plano.</p>
-          <div className="row">
+          <p className="tiny muted" style={{ margin: 0 }}>Se sincroniza con la app abierta y conexión; iOS no permite hacerlo en segundo plano.</p>
+          <div className="row wrap">
             <button className="btn sm" onClick={() => requestSync()}>Sincronizar ahora</button>
-            <button className="btn sm ghost" onClick={() => confirm('¿Cerrar sesión? Los datos quedan en este teléfono.') && signOut()}>Cerrar sesión</button>
+            {s.membership?.role === 'admin' && <Link className="btn sm ghost" href="/datos/equipo/">Equipo y accesos</Link>}
+            <button className="btn sm quiet" onClick={logout}>Cerrar sesión</button>
           </div>
         </>
+      )}
+    </section>
+  )
+}
+
+function SecurityCard() {
+  const [supported, setSupported] = useState<boolean | null>(null)
+  const [on, setOn] = useState(false)
+  const s = useSyncStatus()
+  useEffect(() => {
+    lockSupported().then(setSupported)
+    setOn(!!getLock())
+  }, [])
+  const loggedIn = s.email != null
+  return (
+    <section className="card stack" id="seguridad">
+      <h2>Bloqueo con Face ID</h2>
+      <p className="small muted" style={{ margin: 0 }}>
+        Pide tu cara (o el código del iPhone) al abrir la app y después de 5 minutos sin usarla. Es un bloqueo de pantalla: no cifra los datos.
+      </p>
+      {supported === false ? (
+        <p className="small" style={{ margin: 0 }}><span className="badge neutral">No disponible en este navegador</span></p>
+      ) : !loggedIn && !on ? (
+        <p className="small muted" style={{ margin: 0 }}>Entrá con tu cuenta primero: si Face ID falla, vas a poder desbloquear con el código por email.</p>
+      ) : (
+        <label className="row between small" style={{ gap: 8 }}>
+          <span><strong>{on ? 'Activado' : 'Desactivado'}</strong></span>
+          <input type="checkbox" checked={on} style={{ width: 26, height: 26 }} onChange={async (e) => {
+            if (e.target.checked) {
+              try {
+                await enableLock()
+                setOn(true)
+                showToast('Bloqueo activado')
+              } catch (err) {
+                showToast(`No se pudo activar: ${err instanceof Error ? err.message : err}`, true)
+              }
+            } else {
+              disableLock()
+              setOn(false)
+              showToast('Bloqueo desactivado')
+            }
+          }} data-testid="lock-toggle" />
+        </label>
       )}
     </section>
   )
@@ -151,7 +209,7 @@ function BackupCard() {
       const blob = await exportBackup(photos)
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `lovely-fit-respaldo-${new Date().toISOString().slice(0, 10)}${photos ? '-con-fotos' : ''}.json`
+      a.download = `lovely-fit-respaldo-${dayKey()}${photos ? '-con-fotos' : ''}.json`
       a.click()
       setTimeout(() => URL.revokeObjectURL(a.href), 5000)
     } catch (e) {
@@ -288,7 +346,9 @@ function DangerCard() {
       <h2>Borrar datos</h2>
       <p className="small muted" style={{ margin: 0 }}>Borra todo lo guardado en este dispositivo. No borra lo que esté en la nube.</p>
       <button className="btn danger sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
-        if (!confirm('¿Borrar TODOS los datos de este dispositivo? Exportá un respaldo antes.')) return
+        const pending = await countPending()
+        const warn = pending > 0 ? `\n\nHay ${pending} cambios que NO están en la nube: se perderían.` : ''
+        if (!confirm(`¿Borrar TODOS los datos de este dispositivo? Exportá un respaldo antes.${warn}`)) return
         if (prompt('Escribí BORRAR para confirmar') !== 'BORRAR') return
         await wipeLocal()
         location.href = '/'

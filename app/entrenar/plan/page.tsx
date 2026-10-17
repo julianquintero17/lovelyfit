@@ -99,7 +99,7 @@ export default function PlanEditor() {
           </div>
           <div className="row between">
             <button className="btn quiet sm" onClick={() => setPickFor(d)}>+ Ejercicio</button>
-            <button className="linkbtn small" style={{ color: 'var(--danger)' }} onClick={() => {
+            <button className="linkbtn small danger" onClick={() => {
               if (confirm(`¿Borrar el día "${d.name}"? Las sesiones ya hechas no se borran.`)) {
                 persist(async () => {
                   await softDelete('planDays', d.id)
@@ -151,7 +151,7 @@ function ItemRow({ item, ex, onChange, onRemove, onMove }: {
         <div className="row" style={{ gap: 4 }}>
           <button className="iconbtn" style={{ width: 36, height: 36 }} aria-label="Subir" onClick={() => onMove(-1)}><IconUp /></button>
           <button className="iconbtn" style={{ width: 36, height: 36 }} aria-label="Bajar" onClick={() => onMove(1)}><IconDown /></button>
-          <button className="linkbtn small" style={{ color: 'var(--danger)', marginLeft: 4 }} onClick={onRemove}>Quitar</button>
+          <button className="linkbtn small danger" style={{ marginLeft: 4 }} onClick={onRemove}>Quitar</button>
         </div>
       </div>
       <div className="row wrap" style={{ gap: 8 }}>

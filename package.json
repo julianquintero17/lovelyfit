@@ -31,5 +31,8 @@
     "vitest": "^5.0.5"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "engines": {
+    "node": ">=20.9"
+  }
 }

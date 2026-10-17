@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getDB, insert, update } from '@/lib/db'
 import { fmtDay, relativeDay, weekDays, weekday, weekdayShort } from '@/lib/dates'
 import { useProfile, useRows, useSyncStatus, useToday } from '@/lib/hooks'
@@ -76,9 +76,11 @@ export default function TodayPage() {
       {/* Entrenamiento de hoy */}
       {current ? (
         <div className="card brand hero stack">
-          <p className="kicker">Sesión en curso</p>
+          <p className="kicker">{current.date === today ? 'Sesión en curso' : `Sesión sin terminar · ${fmtDay(current.date)}`}</p>
           <h2 style={{ fontSize: 28 }}>{current.name}</h2>
-          <p className="small muted" style={{ margin: 0 }}>Quedó guardada. Podés seguir donde la dejaste.</p>
+          <p className="small muted" style={{ margin: 0 }}>
+            {current.date === today ? 'Quedó guardada. Podés seguir donde la dejaste.' : 'Quedó abierta de otro día. Entrá para terminarla o descartarla y empezar la de hoy.'}
+          </p>
           <Link className="btn light block" href={`/entrenar/sesion/?id=${current.id}`} data-testid="resume-session">Continuar sesión</Link>
         </div>
       ) : doneToday.length ? (
@@ -103,6 +105,8 @@ export default function TodayPage() {
           <Link className="btn" href="/entrenar/plan/">Armar plan</Link>
         </div>
       )}
+
+      <Tips />
 
       {/* Meta semanal */}
       <div className="card">
@@ -166,7 +170,7 @@ export default function TodayPage() {
           </div>
         </div>
         {(habits ?? []).filter((h) => h.active).map((h) => (
-          <HabitRow key={h.id} habit={h} today={today} log={habitLogs?.find((l) => l.habitId === h.id && !l.deletedAt)} />
+          <HabitRow key={h.id} habit={h} today={today} log={habitLogs?.filter((l) => l.habitId === h.id && !l.deletedAt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]} />
         ))}
       </div>
 
@@ -189,9 +193,13 @@ export default function TodayPage() {
       <p className="tiny muted" style={{ textAlign: 'center' }}>
         {sync.state === 'local-only' || sync.state === 'signed-out'
           ? 'Datos guardados solo en este teléfono. Hacé un respaldo seguido desde Mis datos.'
-          : sync.lastSyncAt
-            ? `Última sincronización: ${new Date(sync.lastSyncAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`
-            : 'Todavía no se sincronizó.'}
+          : sync.state === 'error' || sync.state === 'no-access'
+            ? sync.error
+            : sync.pending > 0
+              ? `${sync.pending} cambios guardados en el teléfono, todavía sin subir.`
+              : sync.lastSyncAt
+                ? `Todo respaldado · ${new Date(sync.lastSyncAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`
+                : 'Todavía no se sincronizó.'}
       </p>
 
       <Sheet open={sheet === 'weight'} onClose={() => setSheet(null)} title="Peso">
@@ -224,6 +232,30 @@ function HabitRow({ habit, today, log }: { habit: Habit; today: string; log?: Ha
         <button className="iconbtn" aria-label="Restar" onClick={() => set(count - 1)} disabled={count === 0}><IconMinus /></button>
         <button className="iconbtn" aria-label="Sumar pausa" onClick={() => set(count + 1)}><IconPlus /></button>
       </div>
+    </div>
+  )
+}
+
+/** Guía corta para los primeros días. Se puede cerrar y no vuelve. */
+function Tips() {
+  const [hidden, setHidden] = useState(true)
+  useEffect(() => {
+    try { setHidden(localStorage.getItem('lf-tips-done') === '1') } catch { setHidden(false) }
+  }, [])
+  if (hidden) return null
+  const close = () => {
+    try { localStorage.setItem('lf-tips-done', '1') } catch { /* sin storage */ }
+    setHidden(true)
+  }
+  return (
+    <div className="card soft stack" style={{ gap: 8 }}>
+      <div className="row between"><p className="kicker" style={{ margin: 0 }}>Cómo usar Lovely Fit</p><button className="linkbtn small" onClick={close}>Entendido</button></div>
+      <ol className="small" style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>
+        <li><strong>Entrená:</strong> tocá Empezar, escribí los kilos y marcá ✓ en cada serie. Se guarda sola.</li>
+        <li><strong>Comé normal:</strong> en Comidas elegí una habitual y el tamaño. Las calorías son opcionales.</li>
+        <li><strong>Medite cada 2 semanas:</strong> peso y cintura, en las mismas condiciones.</li>
+        <li><strong>Mirá Progreso</strong> el domingo: la semana, tus cargas y tus logros.</li>
+      </ol>
     </div>
   )
 }

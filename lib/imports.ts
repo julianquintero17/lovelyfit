@@ -24,6 +24,9 @@ export async function upsertDailyMetric(date: DayKey, kind: MetricKind, value: n
   return 'created' as const
 }
 
+// Topes razonables para detectar un Atajo mal armado
+const MAX: Record<MetricKind, number> = { steps: 100_000, active_kcal: 10_000, exercise_min: 1_440, resting_hr: 250 }
+
 export interface ShortcutPayload {
   date: DayKey
   metrics: Partial<Record<MetricKind, number>>
@@ -36,6 +39,7 @@ export interface ShortcutPayload {
 export function parseShortcutParams(params: URLSearchParams): ShortcutPayload | { error: string } {
   const date = params.get('date') ?? ''
   if (!isValidDayKey(date)) return { error: 'Falta una fecha válida (date=AAAA-MM-DD).' }
+  if (date > dayKey(new Date(Date.now() + 86400000))) return { error: 'La fecha está en el futuro: revisá el Atajo.' }
   const metrics: ShortcutPayload['metrics'] = {}
   const map: Record<string, MetricKind> = { steps: 'steps', active_kcal: 'active_kcal', exercise_min: 'exercise_min', resting_hr: 'resting_hr' }
   for (const [param, kind] of Object.entries(map)) {
@@ -43,7 +47,7 @@ export function parseShortcutParams(params: URLSearchParams): ShortcutPayload | 
     if (raw == null || raw === '') continue
     // Atajos puede mandar "8.123" o "8123,0" según la región
     const n = Number(raw.replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'))
-    if (!Number.isFinite(n) || n < 0) return { error: `Valor inválido para ${param}: "${raw}"` }
+    if (!Number.isFinite(n) || n < 0 || n > MAX[kind]) return { error: `Valor fuera de rango para ${param}: "${raw}"` }
     metrics[kind] = Math.round(n)
   }
   if (!Object.keys(metrics).length) return { error: 'No llegó ningún dato (steps, active_kcal, exercise_min, resting_hr).' }

@@ -5,7 +5,7 @@ import { progressionHint, type Performance } from '@/lib/training'
 import { dailyValue, dedupeActivities, kcalForPortion, latest, nextWeighIn, stepStats, suggestWeekdayStepGoal, summarize, weekPeriod, weeksMeetingGoal } from '@/lib/stats'
 import { parseShortcutParams, upsertDailyMetric, importGPX } from '@/lib/imports'
 import { parseGPX } from '@/lib/gpx'
-import { fromRow, resolveIncoming, toRow, toSnake } from '@/lib/sync'
+import { adoptLocalData, fromRow, otherAccountOnDevice, resolveIncoming, toRow, toSnake } from '@/lib/sync'
 import { seedFor } from '@/lib/seed'
 import { exportBackup, importBackup } from '@/lib/backup'
 import type { Activity, Base, DailyMetric, Measurement, Session, WorkSet } from '@/lib/types'
@@ -108,6 +108,8 @@ describe('importación', () => {
     expect('error' in parseShortcutParams(new URLSearchParams('date=2026-13-01&steps=1'))).toBe(true)
     expect('error' in parseShortcutParams(new URLSearchParams('date=2026-10-16'))).toBe(true)
     expect('error' in parseShortcutParams(new URLSearchParams('date=2026-10-16&steps=-5'))).toBe(true)
+    expect('error' in parseShortcutParams(new URLSearchParams('date=2026-10-16&steps=999999999'))).toBe(true)
+    expect('error' in parseShortcutParams(new URLSearchParams('date=2999-01-01&steps=100'))).toBe(true)
   })
   it('reimportar el mismo día no duplica', async () => {
     expect(await upsertDailyMetric('2026-10-16', 'steps', 8000, 'shortcut')).toBe('created')
@@ -189,5 +191,20 @@ describe('sincronización (lógica pura)', () => {
     expect(resolveIncoming(base({ dirty: 0, updatedAt: '2026-10-17T12:00:00Z' }), remote)).toBe('take')
     expect(resolveIncoming(base({ dirty: 1, updatedAt: '2026-10-17T12:00:00Z' }), remote)).toBe('keep')
     expect(resolveIncoming(base({ dirty: 1, updatedAt: '2026-10-17T09:00:00Z' }), remote)).toBe('take')
+  })
+})
+
+describe('cuentas en el mismo teléfono', () => {
+  it('al entrar solo se adoptan datos creados sin cuenta; nunca los de otra cuenta', async () => {
+    await insert<Measurement>('measurements', { date: '2026-10-17', kind: 'weight', value: 80, note: '', source: 'manual' })
+    const [local] = await getDB().measurements.toArray()
+    expect(local.ownerId.startsWith('local-')).toBe(true)
+    await adoptLocalData('user-a')
+    expect((await getDB().measurements.get(local.id))?.ownerId).toBe('user-a')
+    // Otro usuario en el mismo teléfono: no hereda nada de A
+    expect(await otherAccountOnDevice('user-b')).toBe(true)
+    expect(await otherAccountOnDevice('user-a')).toBe(false)
+    await adoptLocalData('user-b')
+    expect((await getDB().measurements.get(local.id))?.ownerId).toBe('user-a')
   })
 })

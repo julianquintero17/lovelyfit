@@ -36,6 +36,8 @@ export async function importBackup(text: string): Promise<{ inserted: number; up
   const db = getDB()
   const ownerId = (await db.meta.get('ownerId'))?.value as string | undefined
   let inserted = 0, updated = 0, skipped = 0
+  // Decodificar fotos ANTES de la transacción: esperar algo que no es IndexedDB la cerraría.
+  const blobs = await Promise.all(Object.entries(data.photos ?? {}).map(async ([id, url]) => ({ id, blob: await (await fetch(url)).blob() })))
   await db.transaction('rw', db.tables, async () => {
     for (const t of SYNC_TABLES) {
       for (const row of data.tables[t] ?? []) {
@@ -47,9 +49,7 @@ export async function importBackup(text: string): Promise<{ inserted: number; up
         else skipped++
       }
     }
-    for (const [id, url] of Object.entries(data.photos ?? {})) {
-      if (!(await db.photoBlobs.get(id))) await db.photoBlobs.put({ id, blob: await (await fetch(url)).blob() })
-    }
+    for (const b of blobs) if (!(await db.photoBlobs.get(b.id))) await db.photoBlobs.put(b)
   })
   return { inserted, updated, skipped }
 }

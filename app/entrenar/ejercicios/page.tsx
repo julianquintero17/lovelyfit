@@ -85,7 +85,7 @@ function ExerciseDetail({ ex, onDeleted }: { ex: Exercise; onDeleted: () => void
         name: name.trim(), equipment, instructions, incrementKg: parseNum(inc) ?? ex.incrementKg,
       }), 'Ejercicio guardado')}>Guardar cambios</button>
       {ex.isCustom && (
-        <button className="linkbtn small" style={{ color: 'var(--danger)', alignSelf: 'center' }} onClick={async () => {
+        <button className="linkbtn small danger" style={{ alignSelf: 'center' }} onClick={async () => {
           if (!confirm('¿Borrar este ejercicio? El historial ya registrado se conserva.')) return
           const r = await persist(() => softDelete('exercises', ex.id), 'Ejercicio borrado')
           if (r.ok) onDeleted()

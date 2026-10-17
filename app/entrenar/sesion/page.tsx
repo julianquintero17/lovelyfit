@@ -7,13 +7,13 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { getDB, insert, nowISO, softDelete, update } from '@/lib/db'
 import { fmtDay } from '@/lib/dates'
 import {
-  addExerciseToSession, describeSets, discardSession, finishSession, fmtKg, lastPerformance, progressionHint,
+  activeSession, addExerciseToSession, describeSets, discardSession, finishSession, fmtKg, lastPerformance, progressionHint,
   recentPerformances, sessionMinutes, volume, type Performance,
 } from '@/lib/training'
 import type { Exercise, Feel, Session, SessionExercise, WorkSet } from '@/lib/types'
 import { ExercisePicker } from '@/components/ExercisePicker'
 import { IconBack, IconCheck, IconDown, IconMore, IconSwap, IconUp } from '@/components/Icons'
-import { Sheet, parseNum, persist, useSaveState } from '@/components/ui'
+import { Sheet, parseNum, persist, showToast, useSaveState } from '@/components/ui'
 
 export default function SessionPage() {
   return (
@@ -51,7 +51,10 @@ function SessionView() {
   }
 
   const live = session.status === 'in_progress'
-  const workSets = sets.filter((s) => s.kind === 'work')
+  // Las series de ejercicios omitidos no cuentan (están ocultas)
+  const skippedIds = new Set(ses.filter((x) => x.status === 'skipped').map((x) => x.id))
+  const workSets = sets.filter((s) => s.kind === 'work' && !skippedIds.has(s.sessionExerciseId))
+  const cardioDone = ses.some((x) => x.minutes != null && x.status === 'done')
   const doneCount = workSets.filter((s) => s.done).length
 
   async function addExercise(e: Exercise) {
@@ -138,7 +141,11 @@ function SessionView() {
       ) : (
         <div className="row">
           {session.status === 'done' && (
-            <button className="btn quiet sm" onClick={() => persist(() => update<Session>('sessions', id, { status: 'in_progress', endedAt: null }), 'Sesión reabierta')}>Reabrir</button>
+            <button className="btn quiet sm" onClick={async () => {
+              const other = await activeSession()
+              if (other && other.id !== id) return showToast(`Primero terminá o descartá "${other.name}", que está en curso.`, true)
+              persist(() => update<Session>('sessions', id, { status: 'in_progress', endedAt: null }), 'Sesión reabierta')
+            }}>Reabrir</button>
           )}
           <button className="btn danger sm" onClick={async () => {
             if (!confirm('¿Borrar la sesión y todas sus series?')) return
@@ -166,6 +173,11 @@ function SessionView() {
       <Sheet open={finishing} onClose={() => setFinishing(false)} title="¿Cómo te sentiste?">
         <FinishForm
           pending={workSets.length - doneCount}
+          nothingDone={doneCount === 0 && !cardioDone}
+          onDiscard={async () => {
+            const r = await persist(() => discardSession(id), 'Sesión descartada')
+            if (r.ok) router.push('/entrenar/')
+          }}
           onFinish={async (feeling, notes) => {
             const r = await persist(() => finishSession(id, feeling, notes), '¡Sesión guardada!')
             if (r.ok) {
@@ -225,7 +237,9 @@ function ExerciseCard(props: {
     // Completar con un toque: si no escribiste repes, se toma lo sugerido
     if (done && s.reps == null && placeholderReps != null) patch.reps = placeholderReps
     const r = await persist(() => update<WorkSet>('sets', s.id, patch))
+    if (r.ok && !done && se.status === 'done') await persist(() => update<SessionExercise>('sessionExercises', se.id, { status: 'pending' }))
     if (r.ok && done) {
+      unlockAudio()
       props.onRest(se.restSec || 90)
       const allDone = sets.every((x) => (x.id === s.id ? true : x.done))
       if (allDone && se.status !== 'done') await persist(() => update<SessionExercise>('sessionExercises', se.id, { status: 'done' }))
@@ -381,12 +395,17 @@ function NoteInput({ value, onSave }: { value: string; onSave: (v: string) => vo
   return <input className="input" value={v} onChange={(e) => setV(e.target.value)} onBlur={() => v !== value && onSave(v)} placeholder="ej. máquina 3, asiento en 4" />
 }
 
-function FinishForm({ pending, onFinish }: { pending: number; onFinish: (feeling: number | null, notes: string) => void }) {
+function FinishForm({ pending, nothingDone, onFinish, onDiscard }: { pending: number; nothingDone: boolean; onFinish: (feeling: number | null, notes: string) => void; onDiscard: () => void }) {
   const [feeling, setFeeling] = useState<number | null>(null)
   const [notes, setNotes] = useState('')
   return (
     <div className="stack">
-      {pending > 0 && <p className="small muted" style={{ margin: 0 }}>Quedan {pending} series sin marcar. Está bien: se guardan como no hechas.</p>}
+      {nothingDone ? (
+        <div className="card soft stack">
+          <p className="small" style={{ margin: 0 }}>No marcaste ninguna serie. Si hoy no se pudo, descartala: no cuenta para la meta y no pasa nada.</p>
+          <button className="btn quiet sm" onClick={onDiscard}>Descartar sesión</button>
+        </div>
+      ) : pending > 0 && <p className="small muted" style={{ margin: 0 }}>Quedan {pending} series sin marcar. Está bien: se guardan como no hechas.</p>}
       <div className="row" style={{ justifyContent: 'space-between' }} role="group" aria-label="Sensación general">
         {[1, 2, 3, 4, 5].map((n) => (
           <button key={n} className="chip" style={{ width: 52, height: 52, justifyContent: 'center', fontSize: 18 }} aria-pressed={feeling === n} onClick={() => setFeeling(n)}>{n}</button>
@@ -446,11 +465,13 @@ function RestBar({ endsAt, onDone, onAdd }: { endsAt: number; onDone: () => void
   const left = Math.max(0, Math.ceil((endsAt - now) / 1000))
   useEffect(() => {
     if (left === 0) {
+      beep()
       try { navigator.vibrate?.(200) } catch { /* iOS no vibra desde la web */ }
     }
   }, [left])
   return (
-    <div className="restbar" role="timer" aria-live="off" data-testid="rest-bar">
+    <div className="restbar" role="timer" data-testid="rest-bar">
+      <span className="sr-only" role="status">{left === 0 ? 'Descanso terminado. A la próxima serie.' : ''}</span>
       <div className="grow">
         <div className="tiny" style={{ opacity: 0.8 }}>{left === 0 ? '¡A la próxima serie!' : 'Descanso'}</div>
         <div className="num">{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</div>
@@ -459,4 +480,33 @@ function RestBar({ endsAt, onDone, onAdd }: { endsAt: number; onDone: () => void
       <button className="btn sm light" onClick={onDone}>{left === 0 ? 'Cerrar' : 'Saltar'}</button>
     </div>
   )
+}
+
+// ---- Aviso sonoro ------------------------------------------------------------
+// iOS no vibra desde la web y solo permite audio iniciado tras un toque:
+// el primer check de serie "desbloquea" el audio y al terminar el descanso suena un beep corto.
+let audioCtx: AudioContext | null = null
+function unlockAudio() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    if (!audioCtx && Ctx) audioCtx = new Ctx()
+    if (audioCtx?.state === 'suspended') audioCtx.resume()
+  } catch { /* sin audio */ }
+}
+function beep() {
+  if (!audioCtx) return
+  try {
+    const t = audioCtx.currentTime
+    for (const [i, f] of [880, 1320].entries()) {
+      const o = audioCtx.createOscillator()
+      const g = audioCtx.createGain()
+      o.frequency.value = f
+      g.gain.setValueAtTime(0.0001, t + i * 0.18)
+      g.gain.exponentialRampToValueAtTime(0.25, t + i * 0.18 + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.18 + 0.16)
+      o.connect(g).connect(audioCtx.destination)
+      o.start(t + i * 0.18)
+      o.stop(t + i * 0.18 + 0.17)
+    }
+  } catch { /* sin audio */ }
 }

@@ -17,6 +17,8 @@ comida para tener un registro útil.
   calorías son una estimación editable, y "sin estimación" no se cuenta como cero.
 - **Progreso.** Vista semanal y mensual de sesiones, minutos activos, cargas, peso, cintura y pasos. Solo usa
   datos reales: si un día no tiene dato, se muestra como vacío y no como cero.
+- **Acceso por invitación.** Roles de administrador y miembro, accesos que se pueden pausar y bloqueo
+  opcional con Face ID usando una passkey del dispositivo.
 - **Cardio y recorridos.** Carga manual o importación de GPX. El mapa se dibuja únicamente con coordenadas
   reales y sin enviar la ubicación a servicios de mapas.
 
@@ -44,6 +46,7 @@ Algunas decisiones que vale la pena mencionar:
   otro usuario no puede leer, escribir ni hacerse pasar por el dueño.
 - **Fechas.** Los días se calculan en la zona horaria del usuario y no en UTC: un entrenamiento a las 23:30
   cuenta para ese día.
+- **Acceso.** Solo entran emails invitados; una membresía pausada corta el acceso en la base, no solo en la UI.
 - **Login por código y no por enlace.** En iOS, un enlace mágico abre Safari, que no comparte almacenamiento con
   la app instalada en la pantalla de inicio.
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { IconClose } from './Icons'
 
 // ---- Estado de guardado ----------------------------------------------------
@@ -36,8 +37,12 @@ export async function persist<T>(fn: () => Promise<T>, toast?: string): Promise<
     if (toast) showToast(toast)
     return { ok: true, value }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
+    const raw = e instanceof Error ? e.message : String(e)
+    const name = e instanceof Error ? e.name : ''
     console.error(e)
+    const msg = /Quota/i.test(name + raw)
+      ? 'el teléfono se quedó sin espacio para la app. Exportá un respaldo y borrá fotos viejas.'
+      : raw
     setSave({ kind: 'err', at: Date.now(), msg })
     showToast(`No se pudo guardar: ${msg}`, true)
     return { ok: false }
@@ -81,15 +86,29 @@ export function Toaster() {
 
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
+  // onClose suele ser una función nueva en cada render: guardarla en un ref evita
+  // re-ejecutar el efecto (y robar el foco del input mientras se escribe).
+  const close = useRef(onClose)
+  close.current = onClose
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const opener = document.activeElement as HTMLElement | null
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
     window.addEventListener('keydown', onKey)
+    const bg = [document.querySelector('main'), document.querySelector('nav.bottomnav'), document.querySelector('header.topbar')]
+    bg.forEach((el) => el?.setAttribute('inert', ''))
+    document.body.style.overflow = 'hidden'
     ref.current?.focus()
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      bg.forEach((el) => el?.removeAttribute('inert'))
+      document.body.style.overflow = ''
+      opener?.focus?.()
+    }
+  }, [open])
   if (!open) return null
-  return (
+  // Portal al body: la hoja no puede quedar dentro de <main>, que se marca inerte
+  return createPortal(
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle" />
@@ -99,7 +118,8 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -175,7 +195,9 @@ export function WeekBars({ days, label }: { days: { label: string; value: number
           {d.value == null ? (
             <div title="sin datos" style={{ width: '70%', height: 4, borderTop: '2px dotted var(--stone)' }} />
           ) : (
-            <div style={{ width: '70%', height: `${Math.max(4, (d.value / max) * 64)}px`, background: d.today ? 'var(--clay)' : 'var(--lab)', borderRadius: 6 }} />
+            d.value === 0
+              ? <div title="cero" style={{ width: '70%', height: 6, border: '1.5px solid var(--lab)', borderRadius: 6 }} />
+              : <div style={{ width: '70%', height: `${Math.max(4, (d.value / max) * 64)}px`, background: d.today ? 'var(--clay)' : 'var(--lab)', borderRadius: 6 }} />
           )}
           <span className="tiny" style={{ color: d.today ? 'var(--clay-ink)' : 'var(--ink-2)', fontWeight: d.today ? 700 : 500 }}>{d.label}</span>
         </div>

@@ -9,6 +9,7 @@ import { SyncBadge } from './SyncBadge'
 import { startSyncLoop } from '@/lib/sync'
 import { getDB, getMeta } from '@/lib/db'
 import { Onboarding } from './Onboarding'
+import { AppLock } from './AppLock'
 
 const NAV = [
   { href: '/', label: 'Hoy', Icon: IconToday },
@@ -35,6 +36,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         setReady('error')
       })
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+      // Tras un deploy, el SW nuevo toma control: recargar para no mezclar archivos viejos y nuevos.
+      // Seguro incluso a mitad de sesión: todo ya está guardado en el teléfono.
+      const hadController = !!navigator.serviceWorker.controller
+      navigator.serviceWorker.addEventListener('controllerchange', () => hadController && location.reload())
       navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW', e))
     }
   }, [])
@@ -77,6 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
       <Toaster />
+      <AppLock />
     </div>
   )
 }

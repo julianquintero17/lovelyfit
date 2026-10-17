@@ -55,16 +55,25 @@ export function resolveIncoming(local: Base | undefined, remote: Base): 'take' |
 
 // ---- Estado observable --------------------------------------------------
 
-export type SyncState = 'local-only' | 'signed-out' | 'idle' | 'syncing' | 'offline' | 'error'
+export type SyncState = 'local-only' | 'signed-out' | 'idle' | 'syncing' | 'offline' | 'error' | 'no-access'
+export interface Membership {
+  role: 'admin' | 'member'
+  status: 'active' | 'disabled'
+  plan: string
+}
 export interface SyncStatus {
   state: SyncState
   pending: number
   lastSyncAt: string | null
+  /** Mensaje para el usuario (no técnico). */
   error: string | null
+  /** Tablas que no se pudieron subir en el último intento. */
+  failedTables: string[]
   email: string | null
+  membership: Membership | null
 }
 
-let status: SyncStatus = { state: 'local-only', pending: 0, lastSyncAt: null, error: null, email: null }
+let status: SyncStatus = { state: 'local-only', pending: 0, lastSyncAt: null, error: null, failedTables: [], email: null, membership: null }
 const subs = new Set<(s: SyncStatus) => void>()
 export const getSyncStatus = () => status
 export function subscribeSync(fn: (s: SyncStatus) => void) {
@@ -83,6 +92,16 @@ export async function countPending(): Promise<number> {
   let n = 0
   for (const t of SYNC_TABLES) n += await db[t].where('dirty').equals(1).count()
   return n
+}
+
+/** Traduce errores técnicos a algo entendible; el detalle queda en la consola. */
+export function friendlyError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e)
+  console.warn('sync:', msg)
+  if (/fetch|network|Failed to fetch|Load failed/i.test(msg)) return 'No hay conexión con la nube. Tus datos siguen guardados en el teléfono.'
+  if (/JWT|token|session/i.test(msg)) return 'Tu sesión venció. Volvé a entrar desde Mis datos.'
+  if (/row-level security|permission|42501/i.test(msg)) return 'La nube rechazó algunos datos (permisos). Siguen guardados en el teléfono.'
+  return 'No se pudo sincronizar todo. Tus datos siguen guardados en el teléfono; reintentamos solos.'
 }
 
 // ---- Motor -------------------------------------------------------------
@@ -106,54 +125,89 @@ export function requestSync() {
   return running
 }
 
+async function claimMembership(): Promise<(Membership & { profile: Record<string, unknown> | null }) | null> {
+  const { data, error } = await supabase()!.rpc('fit_claim')
+  if (error) throw error
+  return (data as (Membership & { profile: Record<string, unknown> | null }) | null) ?? null
+}
+
 async function syncOnce() {
   const sb = supabase()
   const pending = await countPending()
   if (!sb) return setStatus({ state: 'local-only', pending })
   const { data } = await sb.auth.getSession()
   const user = data.session?.user
-  if (!user) return setStatus({ state: 'signed-out', pending, email: null })
+  if (!user) return setStatus({ state: 'signed-out', pending, email: null, membership: null })
   if (typeof navigator !== 'undefined' && !navigator.onLine) return setStatus({ state: 'offline', pending, email: user.email ?? null })
 
   setStatus({ state: 'syncing', pending, email: user.email ?? null })
   try {
-    await uploadPhotos(user.id)
-    await push(user.id)
-    await pull()
-    setStatus({ state: 'idle', pending: await countPending(), lastSyncAt: new Date().toISOString(), error: null })
-    await setMeta('lastSyncAt', new Date().toISOString())
+    const m = await claimMembership()
+    const membership = m ? { role: m.role, status: m.status, plan: m.plan } : null
+    await setMeta('membership', membership)
+    if (!membership || membership.status !== 'active') {
+      return setStatus({ state: 'no-access', membership, error: 'Tu acceso está pausado. Tus datos siguen en este teléfono.' })
+    }
+    setStatus({ membership })
+    const failed: string[] = []
+    await syncPhotos(user.id).catch((e) => {
+      friendlyError(e)
+      failed.push('fotos')
+    })
+    failed.push(...(await push(user.id)))
+    await pull(user.id)
+    const now = new Date().toISOString()
+    setStatus({
+      state: failed.length ? 'error' : 'idle',
+      pending: await countPending(),
+      lastSyncAt: now,
+      failedTables: failed,
+      error: failed.length ? 'Algunos datos no se pudieron subir. Siguen guardados en el teléfono; reintentamos solos.' : null,
+    })
+    await setMeta('lastSyncAt', now)
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    setStatus({ state: navigator.onLine ? 'error' : 'offline', pending: await countPending(), error: msg })
+    setStatus({ state: navigator.onLine ? 'error' : 'offline', pending: await countPending(), error: friendlyError(e) })
   }
 }
 
-async function push(userId: string) {
+/** Sube por tabla; si una falla, sigue con las demás. Devuelve las tablas con error. */
+async function push(userId: string): Promise<string[]> {
   const sb = supabase()!
   const db = getDB()
+  const failed: string[] = []
   for (const t of SYNC_TABLES) {
     const dirty = (await db[t].where('dirty').equals(1).toArray()) as Base[]
     const mine = dirty.filter((r) => r.ownerId === userId)
-    for (let i = 0; i < mine.length; i += 200) {
-      const batch = mine.slice(i, i + 200)
-      const { error } = await sb.from(REMOTE_TABLE[t]).upsert(batch.map((r) => toRow(r as never)), { onConflict: 'id' })
-      if (error) throw new Error(`${REMOTE_TABLE[t]}: ${error.message}`)
-      // Solo se limpia si nadie editó el registro mientras subía.
-      await db.transaction('rw', db[t], async () => {
-        for (const r of batch) {
-          const cur = (await db[t].get(r.id)) as Base | undefined
-          if (cur && cur.updatedAt === r.updatedAt) await db[t].update(r.id, { dirty: 0 } as never)
-        }
-      })
+    try {
+      for (let i = 0; i < mine.length; i += 200) {
+        const batch = mine.slice(i, i + 200)
+        const { data, error } = await sb.from(REMOTE_TABLE[t]).upsert(batch.map((r) => toRow(r as never)), { onConflict: 'id' }).select('id')
+        if (error) throw new Error(`${REMOTE_TABLE[t]}: ${error.message}`)
+        // Filas que el servidor ignoró por ser más viejas (LWW): traer la versión del servidor.
+        const applied = new Set((data ?? []).map((r) => r.id as string))
+        const stale = batch.filter((r) => !applied.has(r.id)).map((r) => r.id)
+        const newer = stale.length ? (await sb.from(REMOTE_TABLE[t]).select('*').in('id', stale)).data ?? [] : []
+        await db.transaction('rw', db[t], async () => {
+          for (const r of batch) {
+            const cur = (await db[t].get(r.id)) as Base | undefined
+            if (cur && cur.updatedAt === r.updatedAt) await db[t].update(r.id, { dirty: 0 } as never)
+          }
+          for (const row of newer) await db[t].put(fromRow(row) as never)
+        })
+      }
+    } catch (e) {
+      friendlyError(e)
+      failed.push(REMOTE_TABLE[t])
     }
   }
+  return failed
 }
 
-async function pull() {
+async function pull(userId: string) {
   const sb = supabase()!
   const db = getDB()
   for (const t of SYNC_TABLES) {
-    const cursorKey = `pull:${t}`
+    const cursorKey = `pull:${userId}:${t}`
     let cursor = (await getMeta<string>(cursorKey)) ?? '1970-01-01T00:00:00Z'
     for (;;) {
       const { data, error } = await sb
@@ -178,16 +232,23 @@ async function pull() {
   }
 }
 
-async function uploadPhotos(userId: string) {
+/** Sube fotos nuevas y elimina de la nube las que se borraron. */
+async function syncPhotos(userId: string) {
   const sb = supabase()!
   const db = getDB()
-  const photos = (await db.photos.toArray()).filter((p) => p.ownerId === userId && !p.storagePath && !p.deletedAt)
-  for (const p of photos) {
+  const photos = (await db.photos.toArray()).filter((p) => p.ownerId === userId)
+  for (const p of photos.filter((p) => p.deletedAt && p.storagePath)) {
+    const { error } = await sb.storage.from(PHOTO_BUCKET).remove([p.storagePath!])
+    if (error) throw error
+    await db.photos.update(p.id, { storagePath: null, updatedAt: new Date().toISOString(), dirty: 1 } as Partial<Photo>)
+    await db.photoBlobs.delete(p.id)
+  }
+  for (const p of photos.filter((p) => !p.storagePath && !p.deletedAt)) {
     const blob = (await db.photoBlobs.get(p.id))?.blob
     if (!blob) continue
     const path = `${userId}/${p.id}.jpg`
     const { error } = await sb.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: p.mime, upsert: true })
-    if (error) throw new Error(`fotos: ${error.message}`)
+    if (error) throw error
     await db.photos.update(p.id, { storagePath: path, updatedAt: new Date().toISOString(), dirty: 1 } as Partial<Photo>)
   }
 }
@@ -205,44 +266,79 @@ export async function fetchRemotePhoto(p: Photo): Promise<Blob | null> {
 // ---- Cuenta --------------------------------------------------------------
 
 /**
- * Al iniciar sesión, los registros creados sin cuenta pasan a ser del usuario.
- * Se marcan dirty para subirlos.
+ * Al iniciar sesión, SOLO los registros creados sin cuenta ("local-…") pasan a
+ * ser del usuario. Nunca se reasignan datos de otra cuenta.
  */
 export async function adoptLocalData(userId: string) {
   const db = getDB()
-  const prev = await getMeta<string>('ownerId')
   await db.transaction('rw', db.tables, async () => {
     for (const t of SYNC_TABLES) {
       const rows = (await db[t].toArray()) as Base[]
       for (const r of rows) {
-        if (r.ownerId !== userId && (r.ownerId.startsWith('local-') || r.ownerId === prev)) {
-          await db[t].update(r.id, { ownerId: userId, dirty: 1 } as never)
-        }
+        if (r.ownerId.startsWith('local-')) await db[t].update(r.id, { ownerId: userId, dirty: 1 } as never)
       }
     }
     await db.meta.put({ key: 'ownerId', value: userId })
   })
 }
 
+/** ¿Hay en este teléfono datos de otra cuenta? Entonces no se puede entrar con otra sin borrarlos. */
+export async function otherAccountOnDevice(userId?: string): Promise<boolean> {
+  const owner = await getMeta<string>('ownerId')
+  return !!owner && !owner.startsWith('local-') && owner !== userId
+}
+
 export async function sendLoginCode(email: string) {
   const sb = supabase()
   if (!sb) throw new Error('La nube no está configurada.')
-  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
-  if (error) throw error
+  const clean = email.trim().toLowerCase()
+  const { data: allowed, error: e1 } = await sb.rpc('fit_can_sign_in', { p_email: clean })
+  if (e1) throw new Error('No pudimos verificar el acceso. Revisá la conexión.')
+  if (!allowed) throw new Error('Este email todavía no tiene acceso. Pedile una invitación al administrador.')
+  const { error } = await sb.auth.signInWithOtp({ email: clean, options: { shouldCreateUser: true } })
+  if (error) throw new Error(/rate|seconds/i.test(error.message) ? 'Pediste muchos códigos seguidos. Esperá un minuto.' : error.message)
 }
 
 export async function verifyLoginCode(email: string, token: string) {
   const sb = supabase()
   if (!sb) throw new Error('La nube no está configurada.')
-  const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' })
-  if (error) throw error
-  if (data.user) await adoptLocalData(data.user.id)
+  const { data, error } = await sb.auth.verifyOtp({ email: email.trim().toLowerCase(), token, type: 'email' })
+  if (error) throw new Error(/expired|invalid/i.test(error.message) ? 'El código no es válido o venció. Pedí uno nuevo.' : error.message)
+  const user = data.user
+  if (!user) throw new Error('No se pudo iniciar sesión.')
+  if (await otherAccountOnDevice(user.id)) {
+    await sb.auth.signOut()
+    throw new Error('Este teléfono tiene datos de otra cuenta. Cerrá esa sesión desde Mis datos antes de entrar con otra.')
+  }
+  const m = await claimMembership()
+  if (!m || m.status !== 'active') {
+    await sb.auth.signOut()
+    throw new Error(m ? 'Tu acceso está pausado.' : 'Este email no tiene una invitación activa.')
+  }
+  await setMeta('membership', { role: m.role, status: m.status, plan: m.plan })
+  await adoptLocalData(user.id)
   await requestSync()
+  // Primera vez sin datos en la nube ni en el teléfono: crear el perfil con los datos de la invitación
+  if ((await getDB().profiles.count()) === 0) {
+    const { seedFor } = await import('./seed')
+    await seedFor((m.profile ?? {}) as never)
+    await requestSync()
+  }
 }
 
-export async function signOut() {
-  await supabase()?.auth.signOut()
+/**
+ * Cerrar sesión borra los datos de este teléfono (quedan en la cuenta).
+ * Si hay cambios sin subir, no deja salir salvo que se fuerce.
+ */
+export async function signOut(force = false) {
   await requestSync()
+  const pending = await countPending()
+  if (pending > 0 && !force) throw new Error(`Hay ${pending} cambios sin subir. Conectate y sincronizá antes de cerrar sesión, o exportá un respaldo.`)
+  await supabase()?.auth.signOut()
+  const db = getDB()
+  await db.delete()
+  await db.open()
+  setStatus({ state: 'signed-out', pending: 0, email: null, membership: null, lastSyncAt: null, failedTables: [], error: null })
 }
 
 // ---- Arranque ------------------------------------------------------------
@@ -252,10 +348,13 @@ export function startSyncLoop() {
   if (started || typeof window === 'undefined') return
   started = true
   let timer: ReturnType<typeof setTimeout> | null = null
+  // Agrupar: muchas escrituras seguidas (ej. tipear kg) = un solo conteo y una sola sync
   const debounced = () => {
-    countPending().then((pending) => setStatus({ pending }))
     if (timer) clearTimeout(timer)
-    timer = setTimeout(() => requestSync(), 1500)
+    timer = setTimeout(() => {
+      countPending().then((pending) => setStatus({ pending }))
+      requestSync()
+    }, 1500)
   }
   onLocalChange(debounced)
   window.addEventListener('online', () => requestSync())
@@ -267,5 +366,6 @@ export function startSyncLoop() {
     if (document.visibilityState === 'visible') requestSync()
   }, 60_000)
   getMeta<string>('lastSyncAt').then((v) => v && setStatus({ lastSyncAt: v }))
+  getMeta<Membership>('membership').then((m) => m && setStatus({ membership: m }))
   requestSync()
 }

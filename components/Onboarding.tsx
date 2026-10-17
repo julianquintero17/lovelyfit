@@ -13,7 +13,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [weight, setWeight] = useState('')
   const [goal, setGoal] = useState('')
   const [sessions, setSessions] = useState('4')
-  const [mode, setMode] = useState<'start' | 'login'>('start')
+  const [mode, setMode] = useState<'start' | 'login'>(isCloudConfigured() ? 'login' : 'start')
   const [busy, setBusy] = useState(false)
 
   async function start() {
@@ -64,15 +64,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {busy ? 'Preparando…' : 'Empezar'}
           </button>
           {isCloudConfigured() && (
-            <button className="linkbtn" onClick={() => setMode('login')}>Ya uso Lovely Fit en otro dispositivo</button>
+            <button className="linkbtn" onClick={() => setMode('login')}>Tengo invitación: entrar con mi cuenta</button>
           )}
         </div>
       ) : (
         <div className="card stack">
           <h2>Entrar con tu cuenta</h2>
-          <p className="small muted">Traemos tus datos de la nube. No se carga el contenido inicial para no duplicarlo.</p>
+          <p className="small muted" style={{ margin: 0 }}>El acceso es por invitación. Te mandamos un código de 6 dígitos a tu email; si ya usabas la app, traemos tus datos.</p>
           <Login onDone={onDone} />
-          <button className="linkbtn" onClick={() => setMode('start')}>Volver</button>
+          <button className="linkbtn" onClick={() => setMode('start')}>Probar sin cuenta (solo en este teléfono)</button>
         </div>
       )}
       <p className="tiny muted" style={{ textAlign: 'center' }}>

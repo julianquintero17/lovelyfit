@@ -43,10 +43,15 @@ begin
     execute format('create table if not exists public.%I (%s%s)', r.t, base, r.cols);
     execute format('create index if not exists %1$s_owner_sync_idx on public.%1$I (owner_id, server_updated_at)', r.t);
     execute format('alter table public.%I enable row level security', r.t);
+    execute format('drop policy if exists %I on public.%I', r.t || '_select_own', r.t);
     execute format('create policy %1$I on public.%2$I for select to authenticated using ((select auth.uid()) = owner_id)', r.t || '_select_own', r.t);
+    execute format('drop policy if exists %I on public.%I', r.t || '_insert_own', r.t);
     execute format('create policy %1$I on public.%2$I for insert to authenticated with check ((select auth.uid()) = owner_id)', r.t || '_insert_own', r.t);
+    execute format('drop policy if exists %I on public.%I', r.t || '_update_own', r.t);
     execute format('create policy %1$I on public.%2$I for update to authenticated using ((select auth.uid()) = owner_id) with check ((select auth.uid()) = owner_id)', r.t || '_update_own', r.t);
+    execute format('drop policy if exists %I on public.%I', r.t || '_delete_own', r.t);
     execute format('create policy %1$I on public.%2$I for delete to authenticated using ((select auth.uid()) = owner_id)', r.t || '_delete_own', r.t);
+    execute format('drop trigger if exists %I on public.%I', r.t || '_lww', r.t);
     execute format('create trigger %1$I before insert or update on public.%2$I for each row execute function public.fit_lww()', r.t || '_lww', r.t);
   end loop;
 end $$;
@@ -62,11 +67,15 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values ('fit-private', 'fit-private', false, 5242880, array['image/jpeg','image/png','image/webp'])
 on conflict (id) do nothing;
 
+drop policy if exists "fit_photos_read_own" on storage.objects;
 create policy "fit_photos_read_own" on storage.objects for select to authenticated
   using (bucket_id = 'fit-private' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "fit_photos_insert_own" on storage.objects;
 create policy "fit_photos_insert_own" on storage.objects for insert to authenticated
   with check (bucket_id = 'fit-private' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "fit_photos_update_own" on storage.objects;
 create policy "fit_photos_update_own" on storage.objects for update to authenticated
   using (bucket_id = 'fit-private' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "fit_photos_delete_own" on storage.objects;
 create policy "fit_photos_delete_own" on storage.objects for delete to authenticated
   using (bucket_id = 'fit-private' and (storage.foldername(name))[1] = (select auth.uid())::text);

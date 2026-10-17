@@ -2,8 +2,26 @@
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant select, insert, update, delete on storage.objects to authenticated;
 grant usage on all sequences in schema storage to authenticated;
--- Usuario 1 inserta
+-- Invitaciones: u1 invitado, u2 no
+insert into fit_invites (email, role) values ('u1@test.com', 'admin');
+set role anon;
+select 'anon_can_check_invite', fit_can_sign_in('U1@test.com') and not fit_can_sign_in('u2@test.com') as ok;
+reset role;
+-- u2 sin membresía no puede escribir datos
 set role authenticated;
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+set request.jwt.claims = '{"email":"u2@test.com"}';
+select 'u2_claim_denied', fit_claim() is null as ok;
+do $$ begin
+  insert into fit_measurements (id, created_at, updated_at, date, kind, value, source) values (gen_random_uuid(), now(), now(), '2026-10-17', 'weight', 80, 'manual');
+  raise exception 'FALLO: u2 sin membresía pudo insertar';
+exception when insufficient_privilege then raise notice 'u2_without_membership_denied ok';
+end $$;
+-- Usuario 1 reclama su invitación e inserta
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+set request.jwt.claims = '{"email":"u1@test.com"}';
+select 'u1_claim_admin', fit_claim() ->> 'role' = 'admin' as ok;
+select 'invite_used_once', not fit_can_sign_in('nadie@test.com') and (select count(*) from fit_invites where used_at is null) = 0 as ok;
 set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 insert into fit_measurements (id, created_at, updated_at, date, kind, value, source)
   values ('aaaaaaaa-0000-0000-0000-000000000001', now(), '2026-10-17T10:00:00Z', '2026-10-17', 'weight', 105.4, 'manual');

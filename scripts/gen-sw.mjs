@@ -49,12 +49,21 @@ self.addEventListener('fetch', (e) => {
 
   // Navegación: red primero (para tomar versiones nuevas), caché si no hay conexión.
   if (req.mode === 'navigate') {
+    // Con señal mala (gimnasio, sótano) la red puede colgarse: a los 3 s se usa la copia local.
+    const fromCache = async () => {
+      const c = await caches.open(CACHE)
+      let path = url.pathname
+      if (!path.endsWith('/') && !path.includes('.')) path += '/'
+      return (await c.match(path)) || (await c.match('/'))
+    }
     e.respondWith(
-      fetch(req).catch(async () => {
-        const c = await caches.open(CACHE)
-        let path = url.pathname
-        if (!path.endsWith('/') && !path.includes('.')) path += '/'
-        return (await c.match(path)) || (await c.match('/')) || Response.error()
+      new Promise((resolve) => {
+        let done = false
+        const finish = (r) => { if (!done && r) { done = true; resolve(r) } }
+        const timer = setTimeout(() => fromCache().then(finish), 3000)
+        fetch(req)
+          .then((r) => { clearTimeout(timer); finish(r) })
+          .catch(async () => { clearTimeout(timer); finish((await fromCache()) || Response.error()) })
       }),
     )
     return

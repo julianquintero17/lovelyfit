@@ -85,7 +85,9 @@ export default function ProgressPage() {
           <div className="metric"><span className="value">{sum.cardioKm != null ? String(sum.cardioKm).replace('.', ',') : '—'}</span><span className="label">km cardio</span></div>
         </div>
         <p className="small muted" style={{ margin: '10px 0 0' }}>
-          vs. {mode === 'week' ? 'semana' : 'mes'} anterior: {delta(sum.sessions, prev.sessions)} sesiones · {delta(sum.strengthMinutes + sum.cardioMinutes, prev.strengthMinutes + prev.cardioMinutes)} min
+          {isCurrent
+            ? `${mode === 'week' ? 'Semana' : 'Mes'} en curso: comparamos cuando termine.`
+            : `vs. ${mode === 'week' ? 'semana' : 'mes'} anterior: ${delta(sum.sessions, prev.sessions)} sesiones · ${delta(sum.strengthMinutes + sum.cardioMinutes, prev.strengthMinutes + prev.cardioMinutes)} min`}
         </p>
       </div>
 
@@ -125,7 +127,11 @@ export default function ProgressPage() {
             <select className="input" value={selected} onChange={(e) => setExId(e.target.value)} aria-label="Ejercicio">
               {logged.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
-            <LineChart points={(perfs ?? []).slice().reverse().map((p) => ({ x: fmtShort(p.session.date), y: Math.max(...p.sets.map((s) => s.weightKg ?? 0)) }))} unit="kg" label="Carga máxima por sesión" />
+            <LineChart points={(perfs ?? []).slice().reverse().flatMap((p) => {
+              // Sin kilos cargados (peso corporal) no hay punto: 0 kg no es un dato real
+              const kg = p.sets.map((s) => s.weightKg).filter((w): w is number => w != null && w > 0)
+              return kg.length ? [{ x: fmtShort(p.session.date), y: Math.max(...kg) }] : []
+            })} unit="kg" label="Carga máxima por sesión" />
             {perfs?.[0] && <p className="small muted" style={{ margin: 0 }}>Última: {describeSets(perfs[0].sets)}</p>}
           </>
         )}
@@ -196,7 +202,7 @@ export default function ProgressPage() {
             <div key={p.id} className="row">
               <PhotoImg id={p.id} alt="" className="photo-thumb" style={{ width: 80, height: 100 }} />
               <div className="grow small">{fmtDay(p.date)}</div>
-              <button className="linkbtn small" style={{ color: 'var(--danger)' }} onClick={() => confirm('¿Borrar foto?') && persist(async () => {
+              <button className="linkbtn small danger" onClick={() => confirm('¿Borrar foto?') && persist(async () => {
                 await softDelete('photos', p.id)
                 await getDB().photoBlobs.delete(p.id)
               }, 'Foto borrada')}>Borrar</button>
@@ -225,7 +231,7 @@ function MeasurementList({ measurements }: { measurements: Measurement[] }) {
                   <strong>{String(m.value).replace('.', ',')} {m.kind === 'weight' ? 'kg' : 'cm'}</strong> <span className="small muted">{m.kind === 'weight' ? 'peso' : 'cintura'} · {fmtDay(m.date)}</span>
                 </div>
                 <button className="linkbtn small" onClick={() => setEdit(m)}>Editar</button>
-                <button className="linkbtn small" style={{ color: 'var(--danger)' }} onClick={() => confirm('¿Borrar medición?') && persist(() => softDelete('measurements', m.id), 'Borrada')}>Borrar</button>
+                <button className="linkbtn small danger" onClick={() => confirm('¿Borrar medición?') && persist(() => softDelete('measurements', m.id), 'Borrada')}>Borrar</button>
               </div>
             ))}
           </div>

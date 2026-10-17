@@ -11,8 +11,13 @@ async function shot(page: Page, name: string) {
 async function onboard(page: Page) {
   await page.goto('/')
   await page.getByLabel('¿Cómo te llamamos?').fill('Julián')
+  await page.getByLabel('Altura (cm)').fill('180')
   await page.getByTestId('onboard-start').click()
   await expect(page.getByText(/Buen día|Buenas tardes|Buenas noches/)).toBeVisible()
+  // Guía de primer uso: visible una vez y se puede cerrar
+  await expect(page.getByText('Cómo usar Lovely Fit')).toBeVisible()
+  await page.getByRole('button', { name: 'Entendido' }).click()
+  await expect(page.getByText('Cómo usar Lovely Fit')).toBeHidden()
 }
 
 async function noHorizontalScroll(page: Page) {
@@ -61,6 +66,10 @@ test('sesión de fuerza completa: un toque, autoguardado, recuperación y meta s
   await page.getByTestId('finish-confirm').click()
   await expect(page.getByText('Resumen')).toBeVisible()
   await expect(page.getByText(/Terminada/)).toBeVisible()
+  // Reabrir no puede crear dos sesiones en curso: acá no hay otra, así que reabre y se vuelve a cerrar
+  await page.getByRole('button', { name: 'Reabrir' }).click()
+  await page.getByTestId('finish').click()
+  await page.getByTestId('finish-confirm').click()
 
   await page.goto('/')
   await expect(page.getByTestId('week-count')).toContainText('1')

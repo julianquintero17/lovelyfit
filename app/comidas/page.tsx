@@ -206,7 +206,7 @@ function MealForm({ meal, day, templates, tz, onDone }: { meal: Meal | null; day
       )}
       <button className="btn block" disabled={!valid} onClick={save} data-testid="meal-save">Guardar</button>
       {meal && (
-        <button className="linkbtn small" style={{ color: 'var(--danger)', alignSelf: 'center' }} onClick={async () => {
+        <button className="linkbtn small danger" style={{ alignSelf: 'center' }} onClick={async () => {
           if (!confirm('¿Borrar esta comida?')) return
           const r = await persist(() => softDelete('meals', meal.id), 'Comida borrada')
           if (r.ok) onDone()
@@ -218,6 +218,7 @@ function MealForm({ meal, day, templates, tz, onDone }: { meal: Meal | null; day
 
 function guessSlot(hm: string): MealSlot {
   const h = Number(hm.slice(0, 2))
+  if (h >= 22 || h < 5) return 'colación' // picoteo nocturno
   if (h < 11) return 'desayuno'
   if (h < 15) return 'almuerzo'
   if (h < 19) return 'merienda'
@@ -242,7 +243,7 @@ function TemplatesEditor({ templates }: { templates: MealTemplate[] }) {
                 if (v !== t.kcalNormal) persist(() => update<MealTemplate>('mealTemplates', t.id, { kcalNormal: v }))
               }} />
           </div>
-          <button className="linkbtn small" style={{ color: 'var(--danger)', alignSelf: 'flex-start' }} onClick={() => confirm(`¿Borrar "${t.title}"?`) && persist(() => softDelete('mealTemplates', t.id))}>Borrar</button>
+          <button className="linkbtn small danger" style={{ alignSelf: 'flex-start' }} onClick={() => confirm(`¿Borrar "${t.title}"?`) && persist(() => softDelete('mealTemplates', t.id))}>Borrar</button>
         </div>
       ))}
       <button className="btn quiet" onClick={() => persist(() => insert<MealTemplate>('mealTemplates', { title: 'Nueva comida', slot: 'almuerzo', kcalNormal: null, notes: '' }))}>+ Agregar habitual</button>
